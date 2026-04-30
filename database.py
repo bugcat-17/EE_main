@@ -1,25 +1,16 @@
 import os
-from sqlalchemy import create_url, create_engine
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Render 환경변수가 있으면 그걸 쓰고, 없으면 로컬 sqlite 사용
+# 환경 변수에서 데이터베이스 URL을 가져옵니다. (Supabase 연결용)
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
-
-# 만약 postgres 주소가 'postgres://'로 시작한다면 sqlalchemy 호환을 위해 'postgresql://'로 변경
 if SQLALCHEMY_DATABASE_URL and SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-if not SQLALCHEMY_DATABASE_URL:
-    SQLALCHEMY_DATABASE_URL = "sqlite:///./rehab_ai.db"
-
+# 엔진 생성 (create_url 없이 직접 URL 문자열을 넣으면 됩니다)
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+Base = declarative_base()
