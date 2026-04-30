@@ -1,46 +1,51 @@
-# v2/chat/socket_events.py
 import socketio
-import re
-from typing import Any
+from database import SessionLocal
+import models
 
-ROOM_PATTERN = re.compile(r"^[a-zA-Z0-9:_\-]{1,128}$")
-
-def _valid_room(room_id: str) -> bool:
-    return bool(room_id and ROOM_PATTERN.match(room_id))
-
-def register_socket_events(sio: socketio.AsyncServer):
-    @sio.event
-    async def connect(sid, environ, auth):
-        print(f"클라이언트 연결됨: {sid}")
-        return True
+def register_socket_events(sio):
+    # 접속 중인 사용자 관리 (sid -> nickname)
+    connected_users = {}
 
     @sio.event
-    async def identify(sid, data):
-        user_id = str(data.get("user_id") or "").strip()
-        role = str(data.get("role") or "").strip()
-        await sio.save_session(sid, {"user_id": user_id, "role": role})
-        await sio.emit("identified", {"user_id": user_id, "role": role}, to=sid)
-
-    @sio.event
-    async def join_room(sid, data):
-        room_id = str(data.get("room_id") or "")
-        if _valid_room(room_id):
-            await sio.enter_room(sid, room_id)
-            await sio.emit("joined", {"room_id": room_id}, to=sid)
-
-    @sio.event
-    async def chat_message(sid, data):
-        room_id = str(data.get("room_id") or "")
-        text = str(data.get("text") or "").strip()
-        session = await sio.get_session(sid)
+    async def connect(sid, environ):
+        # 접속 시 임시 닉네임 부여 (예: User_a1b2)
+        temp_nickname = f"User_{sid[:4]}"
+        connected_users[sid] = temp_nickname
         
-        await sio.emit("chat_message", {
-            "room_id": room_id,
-            "text": text,
-            "sender_id": session.get("user_id"),
-            "role": session.get("role")
-        }, room=room_id, skip_sid=sid)
+        # 이전 채팅 기록 30개 불러와서 전송 (선택 사항)
+        db = SessionLocal()
+        prev_messages = db.query(models.ChatLog).order_by(models.ChatLog.id.desc()).limit(30).all()
+        db.close()
         
-        await sio.emit("chat_message", {
-            "room_id": room_id, "text": text, "me": True
-        }, to=sid)
+        # 과거 메시지를 역순으로 보내줌
+        for msg in reversed(prev_messages):
+            await sio.emit('receive_message', {
+                'nickname': msg.nickname,
+                'message': msg.message
+            }, to=sid)
+
+        print(f"✅ {temp_nickname} 접속 (SID: {sid})")
+
+    @sio.on('set_nickname')
+    async def handle_set_nickname(sid, new_nickname):
+        old_name = connected_users.get(sid)
+        connected_users[sid] = new_nickname
+        print(f"📢 닉네임 변경: {old_name} -> {new_nickname}")
+
+    @sio.on('send_message')
+    async def handle_send_message(sid, data):
+        nickname = connected_users.get(sid, "Unknown")
+        message = data.get('message')
+
+        # 1. DB에 저장
+        db = SessionLocal()
+        new_log = models.ChatLog(nickname=nickname, message=message)
+        db.add(new_log)
+        db.commit()
+        db.close()
+
+        # 2. 모든 접속자에게 브로드캐스트
+        await sio.emit('receive_message', {
+            'nickname': nickname,
+            'message': message
+        })

@@ -2,6 +2,14 @@ from sqlalchemy import Column, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import relationship # 추가_260429
 from database import Base
 
+class ChatLog(Base):
+    __tablename__ = "chat_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nickname = Column(String(50))
+    message = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
 class Patient(Base):
     __tablename__ = "patients"
     id = Column(Integer, primary_key=True, index=True)
