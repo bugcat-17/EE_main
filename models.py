@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime #DateTime 추가
+from datetime import datetime # 이것도 필요요
 from sqlalchemy.orm import relationship # 추가_260429
 from database import Base
 
@@ -6,7 +7,7 @@ class ChatLog(Base):
     __tablename__ = "chat_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    nickname = Column(String(50))
+    nickname = Column(String)
     message = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
