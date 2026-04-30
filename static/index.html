@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>홈페이지 시작 화면</title>
   
-  <!-- Socket.IO 라이브러리 추가 (닉네임 통신용) -->
   <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
   <style>
@@ -34,7 +33,6 @@
       padding: 20px;
     }
 
-    /* 기존 스타일 그대로 유지 */
     .container {
       width: min(560px, 100%);
       background: var(--card-bg);
@@ -91,13 +89,10 @@
     .btn-submit { margin-top: 4px; background: var(--primary); box-shadow: 0 6px 16px rgba(0, 86, 168, 0.22); }
     .btn-submit:hover { background: var(--primary-hover); box-shadow: 0 10px 22px rgba(0, 66, 127, 0.28); }
     .message { margin-top: 10px; font-size: 0.92rem; font-weight: 600; min-height: 1.2em; }
-    .message.error { color: #b91c1c; }
-    .message.success { color: #047857; }
   </style>
 </head>
 
 <body>
-  <!-- 1. 메인 로그인 컨테이너 -->
   <main class="container">
     <div class="top-banner" aria-label="로고/배너 영역">
       <div class="banner-text">
@@ -112,7 +107,6 @@
       <button id="therapistStartBtn" class="btn btn-therapist" type="button">치료사용으로 시작하기</button>
     </div>
 
-    <!-- 환자 패널 -->
     <section id="patientPanel" class="panel" aria-live="polite">
       <div class="patient-profile">
         <img id="patientAvatar" class="patient-avatar" alt="공백 프로필 이미지" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='white'/></svg>" />
@@ -135,7 +129,6 @@
       <div id="patientMessage" class="message"></div>
     </section>
 
-    <!-- 치료사 패널 -->
     <section id="therapistPanel" class="panel" aria-live="polite">
       <div class="field">
         <label for="therapistId">아이디</label>
@@ -150,16 +143,6 @@
     </section>
   </main>
 
-  <!-- 2. 상단 닉네임 변경 영역 (화면 중앙 상단에 배치) -->
-  <div id="nickname-area" style="position: fixed; top: 20px; right: 20px; background: white; padding: 10px 15px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 1000; font-size: 14px; border: 1px solid #e5e7eb;">
-      <span style="color: #4b5563;">내 닉네임: </span><b id="my-nickname-display" style="color: #0056a8;">연결 중...</b>
-      <div style="margin-top: 8px; display: flex; gap: 5px;">
-        <input type="text" id="nickname-input" placeholder="새 닉네임" style="padding: 6px; font-size: 13px; border-radius: 6px; border: 1px solid #d1d5db; width: 100px;">
-        <button onclick="changeNickname()" style="background: #0056a8; color: white; border: none; border-radius: 6px; padding: 0 10px; cursor: pointer; font-size: 13px;">변경</button>
-      </div>
-  </div>
-
-  <!-- 3. 좌측 하단 AI 테스트 위젯 -->
   <div id="ai-widget" style="position: fixed; bottom: 30px; left: 30px; z-index: 1000; font-family: sans-serif;">
     <button onclick="toggleAI()" id="ai-button" style="width: 60px; height: 60px; border-radius: 50%; background: #10b981; color: white; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 28px; transition: 0.2s;">🤖</button>
     
@@ -178,23 +161,31 @@
     </div>
   </div>
 
-  <!-- 4. 우측 하단 채팅 위젯 -->
   <div id="chat-widget" style="position: fixed; bottom: 30px; right: 30px; z-index: 1000; font-family: sans-serif;">
     <button onclick="toggleChat()" id="chat-button" style="width: 60px; height: 60px; border-radius: 50%; background: #2563eb; color: white; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 28px; display: flex; align-items: center; justify-content: center; transition: transform 0.2s;">💬</button>
     
-    <div id="chat-window" style="display: none; position: absolute; bottom: 80px; right: 0; width: 380px; height: 550px; border-radius: 15px; overflow: hidden; box-shadow: 0 12px 24px rgba(0,0,0,0.15); border: 1px solid #e5e7eb; background: white;">
-        <div style="background: #2563eb; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center;">
+    <div id="chat-window" style="display: none; position: absolute; bottom: 80px; right: 0; width: 380px; height: 580px; border-radius: 15px; overflow: hidden; box-shadow: 0 12px 24px rgba(0,0,0,0.15); border: 1px solid #e5e7eb; background: white; flex-direction: column;">
+        
+        <div style="background: #2563eb; color: white; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
             <div style="background: rgba(255, 255, 255, 0.2); padding: 4px; border-radius: 20px; display: flex; gap: 4px;">
                 <button id="btn-patient" onclick="switchMode('patient')" style="background: white; color: #2563eb; border: none; border-radius: 16px; padding: 4px 12px; font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.2s;">환자</button>
                 <button id="btn-therapist" onclick="switchMode('therapist')" style="background: transparent; color: white; border: none; border-radius: 16px; padding: 4px 12px; font-size: 13px; cursor: pointer; transition: 0.2s;">치료사</button>
             </div>
             <button onclick="toggleChat()" style="background: none; border: none; color: white; cursor: pointer; font-size: 22px; line-height: 1;">×</button>
         </div>
-        <iframe id="chat-iframe" src="/preview/patient" style="width: 100%; height: calc(100% - 60px); border: none;"></iframe>
+
+        <div style="background: #f8fafc; border-bottom: 1px solid #e5e7eb; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; flex-shrink: 0;">
+            <span style="color: #4b5563; font-weight: 500;">접속명: <b id="my-nickname-display" style="color: #2563eb;">연결 중...</b></span>
+            <div style="display: flex; gap: 5px;">
+                <input type="text" id="nickname-input" placeholder="새 닉네임" style="padding: 6px 8px; font-size: 12px; border-radius: 6px; border: 1px solid #cbd5e1; width: 90px; outline: none;">
+                <button onclick="changeNickname()" style="background: #2563eb; color: white; border: none; border-radius: 6px; padding: 0 10px; cursor: pointer; font-size: 12px; font-weight: 600;">변경</button>
+            </div>
+        </div>
+
+        <iframe id="chat-iframe" src="/preview/patient" style="flex-grow: 1; width: 100%; border: none;"></iframe>
     </div>
   </div>
 
-  <!-- 5. 모든 자바스크립트 스크립트 모음 -->
   <script>
     // --- [로그인 패널 로직] ---
     const patientStartBtn = document.getElementById("patientStartBtn");
@@ -223,19 +214,27 @@
 
     // --- [닉네임 및 Socket 통신 로직] ---
     const socket = io();
+    
     function changeNickname() {
         const newName = document.getElementById('nickname-input').value.trim();
         if(newName) {
+            // 1. 메인 창 소켓 닉네임 변경
             socket.emit('set_nickname', newName);
             document.getElementById('my-nickname-display').innerText = newName;
             document.getElementById('nickname-input').value = '';
+            
+            // 2. iframe 안쪽 채팅창에도 닉네임 변경 적용 (동기화)
+            const iframe = document.getElementById('chat-iframe');
+            if(iframe && iframe.contentWindow && iframe.contentWindow.socket) {
+                iframe.contentWindow.socket.emit('set_nickname', newName);
+            }
+            
             alert("닉네임이 변경되었습니다!");
         }
     }
     
-    // (선택) 서버에서 내 닉네임을 할당받았을 때 표시
     socket.on('connect', () => {
-        document.getElementById('my-nickname-display').innerText = "임시 닉네임 (연결됨)";
+        document.getElementById('my-nickname-display').innerText = "임시 닉네임";
     });
 
     // --- [AI 테스트 위젯 로직] ---
@@ -285,7 +284,7 @@
         const win = document.getElementById('chat-window');
         const btn = document.getElementById('chat-button');
         if (win.style.display === 'none' || win.style.display === '') {
-            win.style.display = 'block';
+            win.style.display = 'flex'; // block 대신 flex 사용 (내부 레이아웃 용이)
             btn.style.transform = 'scale(0.9) rotate(90deg)';
             btn.innerHTML = '✕';
         } else {
