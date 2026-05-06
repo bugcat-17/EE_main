@@ -223,10 +223,10 @@
             document.getElementById('my-nickname-display').innerText = newName;
             document.getElementById('nickname-input').value = '';
             
-            // 2. iframe 안쪽 채팅창에도 닉네임 변경 적용 (동기화)
+            // 2. ✨ iframe 안쪽 채팅창에 닉네임 변경 쪽지(postMessage) 쏘기
             const iframe = document.getElementById('chat-iframe');
-            if(iframe && iframe.contentWindow && iframe.contentWindow.socket) {
-                iframe.contentWindow.socket.emit('set_nickname', newName);
+            if(iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({type: "UPDATE_NICKNAME", nickname: newName}, "*");
             }
             
             alert("닉네임이 변경되었습니다!");
