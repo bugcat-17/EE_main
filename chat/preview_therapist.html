@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>상담사 채팅 (미리보기)</title>
+  <title>상담사 채팅 (닉네임 저장형)</title>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <style>
     :root {
@@ -12,7 +12,7 @@
       --border: #2d3a4d;
       --text: #e7ecf3;
       --muted: #8b9cb3;
-      --accent: #2eb88a;
+      --accent: #2eb88a; /* 상담사 전용 초록색 포인트 */
     }
     * { box-sizing: border-box; }
     body {
@@ -27,41 +27,30 @@
     header {
       padding: 0.85rem 1rem;
       border-bottom: 1px solid var(--border);
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.5rem 1rem;
       background: var(--panel);
     }
-    header h1 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 600;
-    }
-    header .badge {
+    header h1 { margin: 0; font-size: 1rem; display: inline-block; }
+    .badge {
       font-size: 0.7rem;
       padding: 0.2rem 0.45rem;
       border-radius: 4px;
       background: rgba(46, 184, 138, 0.25);
       color: #8ee8c8;
-      font-weight: 600;
+      margin-left: 5px;
     }
-    header .meta {
-      margin: 0;
-      font-size: 0.78rem;
-      color: var(--muted);
-      width: 100%;
+    .nickname-area { margin-top: 8px; display: flex; gap: 5px; align-items: center; }
+    .nickname-area input { 
+      background: var(--bg); border: 1px solid var(--border); color: #fff; 
+      padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; width: 150px;
     }
-    .log {
-      flex: 1;
-      overflow-y: auto;
-      padding: 0.75rem 1rem;
-      font-size: 0.88rem;
-      line-height: 1.45;
+    .nickname-area button { 
+      background: var(--accent); color: #0f1419; border: none; 
+      padding: 4px 10px; border-radius: 4px; font-weight: bold; cursor: pointer; 
     }
-    .log .row { margin-bottom: 0.5rem; word-break: break-word; }
-    .log .meta { color: var(--muted); font-size: 0.78rem; }
-    .log .me { color: #c4b5fd; }
+    .log { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; font-size: 0.88rem; }
+    .row { margin-bottom: 0.6rem; line-height: 1.4; }
+    .me { color: #8ee8c8; text-align: right; } /* 상담사 본인 메시지 색상 */
+    .meta { color: var(--muted); font-size: 0.75rem; text-align: center; margin: 10px 0; }
     .composer {
       border-top: 1px solid var(--border);
       padding: 0.65rem;
@@ -70,125 +59,102 @@
       background: var(--panel);
     }
     .composer input {
-      flex: 1;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--text);
-      padding: 0.5rem 0.75rem;
-      font-size: 0.9rem;
+      flex: 1; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 0.5rem;
     }
-    .composer input:focus { outline: none; border-color: var(--accent); }
     .composer button {
-      background: var(--accent);
-      border: none;
-      color: #0f1419;
-      font-weight: 600;
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 0.85rem;
+      background: var(--accent); border: none; color: #0f1419;
+      font-weight: 600; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer;
     }
-    .composer button:hover { filter: brightness(1.08); }
-    .status {
-      font-size: 0.75rem;
-      color: var(--muted);
-      margin-left: auto;
-    }
+    .status { float: right; font-size: 0.75rem; }
     .status.ok { color: #6ee7b7; }
-    .status.err { color: #fca5a5; }
   </style>
 </head>
 <body>
   <header>
-    <h1>상담사</h1>
+    <h1>상담사 모드</h1>
     <span class="badge">therapist</span>
     <span class="status" id="st">연결 중…</span>
-    <p class="meta" id="roomline"></p>
+    <div class="nickname-area">
+      <input type="text" id="nicknameInput" placeholder="상담사 이름 입력">
+      <button onclick="changeNickname()">이름 확정</button>
+    </div>
   </header>
+
   <div class="log" id="log"></div>
+
   <form class="composer" id="form">
-    <input type="text" id="input" placeholder="메시지 입력 후 Enter" autocomplete="off" />
+    <input type="text" id="input" placeholder="답장 입력..." autocomplete="off" />
     <button type="submit">보내기</button>
   </form>
+
   <script>
-    var params = new URLSearchParams(location.search);
-    var ROOM_ID = params.get("room") || "preview:room:demo";
-    var USER_ID = params.get("user") || "therapist-demo-1";
+    const CHAT_ORIGIN = "https://ee-main.onrender.com";
+    const logEl = document.getElementById("log");
+    const st = document.getElementById("st");
+    const input = document.getElementById("input");
+    const nicknameInput = document.getElementById("nicknameInput");
 
-    function chatServerOrigin() {
-      var s = params.get("server");
-      if (s) return s.replace(/\/$/, "");
-      if (location.protocol === "file:") return "http://127.0.0.1:8000";
-      if (location.origin && location.origin !== "null") return location.origin;
-      return "http://127.0.0.1:8000";
+    // 1. 상담사 전용 닉네임 로드 (환자와 분리됨)
+    let myNickname = localStorage.getItem("therapist_nickname");
+    if (!myNickname) {
+        myNickname = "상담사_" + Math.floor(Math.random() * 100);
+        localStorage.setItem("therapist_nickname", myNickname);
     }
-    var CHAT_ORIGIN = chatServerOrigin();
+    nicknameInput.value = myNickname;
 
-    document.getElementById("roomline").textContent =
-      "room=" + ROOM_ID + " · user=" + USER_ID + " · 서버=" + CHAT_ORIGIN + " (?server= 로 변경 가능)";
+    const socket = io(CHAT_ORIGIN, {
+      transports: ["websocket", "polling"],
+    });
 
-    var logEl = document.getElementById("log");
-    var st = document.getElementById("st");
-    var input = document.getElementById("input");
-    var form = document.getElementById("form");
-
-    function appendLog(text, cls) {
-      var row = document.createElement("div");
-      row.className = "row" + (cls ? " " + cls : "");
-      row.textContent = text;
+    function appendLog(nickname, text, isMe) {
+      const row = document.createElement("div");
+      row.className = "row" + (isMe ? " me" : "");
+      row.innerHTML = `<strong>${nickname}:</strong> ${text}`;
       logEl.appendChild(row);
       logEl.scrollTop = logEl.scrollHeight;
     }
 
-    var socket = io(CHAT_ORIGIN, {
-      path: "/socket.io",
-      transports: ["websocket", "polling"],
-    });
-
+    // 2. 연결 및 식별
     socket.on("connect", function () {
-      st.textContent = "연결됨";
+      st.textContent = "연결됨 (" + myNickname + ")";
       st.className = "status ok";
-      socket.emit("identify", { user_id: USER_ID, role: "therapist" });
-      socket.emit("join_room", { room_id: ROOM_ID });
-      appendLog("· 방 입장: " + ROOM_ID, "meta");
+      // 서버에 내 닉네임을 알림 (서버는 이 이름을 바탕으로 과거 내역을 줌)
+      socket.emit("identify", { nickname: myNickname });
     });
 
-    socket.on("disconnect", function () {
-      st.textContent = "끊김";
-      st.className = "status err";
+    // 3. 메시지 수신 (실시간 + 과거 기록)
+    socket.on("receive_message", function (data) {
+      const isMe = (data.nickname === myNickname);
+      appendLog(data.nickname, data.message, isMe);
     });
 
-    socket.on("connect_error", function () {
-      st.textContent = "연결 실패";
-      st.className = "status err";
-    });
-
-    socket.on("identified", function (p) {
-      appendLog("· 본인 확인: " + p.user_id + " (" + p.role + ")", "meta");
-    });
-
-    socket.on("joined", function (p) {
-      appendLog("· joined: " + p.room_id, "meta");
-    });
-
-    socket.on("chat_message", function (msg) {
-      var who = msg.me ? "나" : (msg.role === "patient" ? "환자" : "상담사");
-      var prefix = msg.me ? "" : (msg.sender_id ? "[" + msg.sender_id + "] " : "");
-      appendLog(prefix + who + ": " + msg.text, msg.me ? "me" : "");
-    });
-
-    socket.on("error", function (err) {
-      appendLog("오류: " + (err.message || JSON.stringify(err)), "meta");
-    });
-
-    form.addEventListener("submit", function (e) {
+    // 4. 메시지 전송
+    document.getElementById("form").addEventListener("submit", function (e) {
       e.preventDefault();
-      var t = input.value.trim();
+      const t = input.value.trim();
       if (!t) return;
-      socket.emit("chat_message", { room_id: ROOM_ID, text: t });
+
+      // 서버의 handle_send_message가 기다리는 키 'message' 사용
+      socket.emit("send_message", { message: t });
       input.value = "";
     });
+
+    // 5. 닉네임 변경 함수
+    window.changeNickname = function() {
+      const newName = nicknameInput.value.trim();
+      if (newName && newName !== myNickname) {
+        myNickname = newName;
+        localStorage.setItem("therapist_nickname", newName);
+        socket.emit("set_nickname", newName);
+        
+        // 화면 초기화 후 재접속하여 새 이름 기반으로 내역 다시 불러오기
+        logEl.innerHTML = '<div class="meta">상담사 정보 갱신 중...</div>';
+        location.reload(); 
+      }
+    };
+
+    socket.on("disconnect", () => { st.textContent = "연결 끊김"; st.className = "status err"; });
   </script>
 </body>
 </html>

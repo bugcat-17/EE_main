@@ -1,43 +1,117 @@
-<script>
-  (function () {
-      const CHAT_SERVER = "https://ee-main.onrender.com";
-      const socket = io(CHAT_SERVER, { transports: ["websocket", "polling"] });
-  
-      // [중요] 실행되자마자 로컬 스토리지에서 닉네임부터 가져옴
-      let myNickname = localStorage.getItem("saved_nickname") || "익명객체";
-      
-      socket.on("connect", () => {
-          // 연결 즉시 서버에 닉네임 전달 -> 서버는 이걸 받고 과거 내역을 쏴줌
-          socket.emit("identify", { nickname: myNickname });
-      });
-  
-      // 메시지 전송 함수 (이름을 sendChat으로 통일) [cite: 11]
-      window.sendChat = function (text) {
-          if (!text || text.trim() === "") return;
-          // 서버의 handle_send_message가 'message' 키를 기다림 [cite: 4]
-          socket.emit("send_message", { message: text }); 
-      };
-  
-      // 메시지 수신 (과거 내역 + 실시간 메시지 공용) [cite: 10]
-      socket.on("receive_message", (data) => {
-          const chatWindow = document.getElementById("chat-content"); // 실제 채팅창 ID로 변경하세요
-          if (chatWindow) {
-              const msgTag = document.createElement("div");
-              msgTag.innerHTML = `<b>${data.nickname}:</b> ${data.message}`;
-              chatWindow.appendChild(msgTag);
-              chatWindow.scrollTop = chatWindow.scrollHeight; // 스크롤 하단 이동
-          }
-      });
-  
-      // 닉네임 변경 기능
-      window.changeMyNickname = function() {
-          const newName = document.getElementById('nicknameInput').value.trim();
-          if (newName) {
-              myNickname = newName;
-              localStorage.setItem("saved_nickname", newName); // 새로고침 대비 저장
-              socket.emit("set_nickname", newName);
-              location.reload(); // 과거 내역 닉네임 동기화를 위해 새로고침 추천
-          }
-      };
-  })();
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>환자 채팅 (닉네임 저장형)</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    /* ... 기존 스타일 유지 ... */
+    :root { --bg: #0f1419; --panel: #1a2332; --border: #2d3a4d; --text: #e7ecf3; --muted: #8b9cb3; --accent: #3d8bfd; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: "Segoe UI", sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+    header { padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+    header h1 { margin: 0; font-size: 1rem; display: inline-block; }
+    .nickname-area { margin-top: 5px; display: flex; gap: 5px; }
+    .nickname-area input { background: #000; border: 1px solid var(--border); color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; }
+    .nickname-area button { font-size: 0.7rem; cursor: pointer; background: var(--accent); color: white; border: none; border-radius: 4px; }
+    .log { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; font-size: 0.88rem; }
+    .row { margin-bottom: 0.5rem; }
+    .meta { color: var(--muted); font-size: 0.75rem; text-align: center; margin: 10px 0; }
+    .me { color: #c4b5fd; text-align: right; }
+    .composer { border-top: 1px solid var(--border); padding: 0.65rem; display: flex; gap: 0.5rem; background: var(--panel); }
+    .composer input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 0.5rem; }
+    .composer button { background: var(--accent); border: none; color: #fff; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; }
+    .status { float: right; font-size: 0.75rem; }
+    .status.ok { color: #6ee7b7; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>환자 채팅</h1>
+    <span class="status" id="st">연결 중…</span>
+    <div class="nickname-area">
+      <input type="text" id="nicknameInput" placeholder="닉네임 입력">
+      <button onclick="changeNickname()">변경</button>
+    </div>
+  </header>
+
+  <div class="log" id="log"></div>
+
+  <form class="composer" id="form">
+    <input type="text" id="input" placeholder="메시지 입력..." autocomplete="off" />
+    <button type="submit">전송</button>
+  </form>
+
+  <script>
+    // 1. 설정 및 변수 초기화
+    const CHAT_ORIGIN = "https://ee-main.onrender.com"; // 서버 주소 고정
+    const logEl = document.getElementById("log");
+    const st = document.getElementById("st");
+    const input = document.getElementById("input");
+    const nicknameInput = document.getElementById("nicknameInput");
+
+    // 2. 닉네임 로드 (로컬 스토리지)
+    let myNickname = localStorage.getItem("saved_nickname");
+    if (!myNickname) {
+        myNickname = "환자_" + Math.floor(Math.random() * 1000);
+        localStorage.setItem("saved_nickname", myNickname);
+    }
+    nicknameInput.value = myNickname;
+
+    // 3. 소켓 연결
+    const socket = io(CHAT_ORIGIN, {
+      transports: ["websocket", "polling"],
+    });
+
+    function appendLog(nickname, text, isMe) {
+      const row = document.createElement("div");
+      row.className = "row" + (isMe ? " me" : "");
+      row.innerHTML = `<strong>${nickname}:</strong> ${text}`;
+      logEl.appendChild(row);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // 4. 소켓 이벤트 처리
+    socket.on("connect", function () {
+      st.textContent = "연결됨 (" + myNickname + ")";
+      st.className = "status ok";
+      // 서버에 내 닉네임을 알리고 과거 내역을 요청함
+      socket.emit("identify", { nickname: myNickname });
+    });
+
+    // 서버에서 보내주는 메시지 받기 (실시간 + 과거 내역 공용)
+    socket.on("receive_message", function (data) {
+      const isMe = (data.nickname === myNickname);
+      appendLog(data.nickname, data.message, isMe);
+    });
+
+    // 5. 메시지 전송
+    document.getElementById("form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      const t = input.value.trim();
+      if (!t) return;
+
+      // [중요] 서버의 handle_send_message가 기다리는 키값 'message'로 전송
+      socket.emit("send_message", { message: t });
+      input.value = "";
+    });
+
+    // 6. 닉네임 변경 함수
+    window.changeNickname = function() {
+      const newName = nicknameInput.value.trim();
+      if (newName && newName !== myNickname) {
+        myNickname = newName;
+        localStorage.setItem("saved_nickname", newName);
+        socket.emit("set_nickname", newName);
+        
+        // 닉네임이 바뀌면 과거 내역과의 동기화를 위해 화면을 깨끗이 비우고 다시 접속
+        logEl.innerHTML = '<div class="meta">닉네임 변경 중...</div>';
+        location.reload(); 
+      }
+    };
+
+    socket.on("disconnect", () => { st.textContent = "연결 끊김"; st.className = "status err"; });
   </script>
+</body>
+</html>
