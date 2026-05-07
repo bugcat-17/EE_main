@@ -17,7 +17,7 @@ def analyze_rehab_data(record_data: dict):
         risk_level = "수행률 저하 + 통증 상승 (주의 필요)"
 
     # 2. LLM을 활용한 요약 문장 생성 [cite: 80, 81, 83]
-    model = genai.GenerativeModel('gemini-3.0-flash')
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     prompt = f"""
     당신은 재활 치료 보조 AI입니다. 환자의 오늘 운동 기록을 바탕으로 다음 두 가지를 작성해주세요.
