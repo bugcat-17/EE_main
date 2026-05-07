@@ -39,3 +39,14 @@ class AIAnalysis(Base):
     patient_feedback = Column(Text)
     therapist_summary = Column(Text)
     risk_level = Column(String)
+
+    class AIAnalysis(Base):
+    __tablename__ = "ai_analyses"
+    id = Column(Integer, primary_key=True, index=True)
+    record_id = Column(Integer, ForeignKey("exercise_records.id"))
+    patient_feedback = Column(Text)
+    therapist_summary = Column(Text)
+    risk_level = Column(String)
+
+    # 이 줄이 반드시 있어야 합니다!
+    record = relationship("ExerciseRecord", back_populates="ai_analysis")
