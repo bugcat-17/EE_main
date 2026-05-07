@@ -1,41 +1,48 @@
-<!-- 기존 환자 사이트에 붙일 때: 아래 스크립트만 채팅 영역 근처에 포함 -->
+<div class="chat-nickname-container">
+  <input type="text" id="nicknameInput" placeholder="닉네임 입력" style="padding:5px;">
+  <button onclick="changeMyNickname()">닉네임 변경</button>
+</div>
+
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
 <script>
   (function () {
-    const CHAT_SERVER = "https://ee-main.onrender.com"; // Render 주소로 변경!
-    const roomId = "REPLACE_WITH_ROOM_ID_FROM_YOUR_BACKEND";
-    const userId = "REPLACE_WITH_LOGGED_IN_PATIENT_ID";
-    
-    let currentNickname = "환자"; // 기본 닉네임 설정
-
+    const CHAT_SERVER = "https://ee-main.onrender.com";
     const socket = io(CHAT_SERVER, { transports: ["websocket", "polling"] });
 
+    // 1. 자동 닉네임 부여 (기기 저장소 확인)
+    let myNickname = localStorage.getItem("saved_nickname");
+    if (!myNickname) {
+      myNickname = "환자_" + Math.random().toString(36).substring(2, 6);
+      localStorage.setItem("saved_nickname", myNickname);
+    }
+
     socket.on("connect", () => {
-      socket.emit("identify", { user_id: userId, role: "patient" });
-      socket.emit("join_room", { room_id: roomId });
+      // 2. 접속 시 내 닉네임을 서버에 알림
+      socket.emit("identify", { nickname: myNickname });
     });
 
-    // ✨ 바깥 창에서 보낸 '닉네임 변경' 쪽지 받기
-    window.addEventListener("message", function(event) {
-      if (event.data && event.data.type === "UPDATE_NICKNAME") {
-        currentNickname = event.data.nickname;
-        console.log("iframe 안쪽 닉네임 변경 완료:", currentNickname);
+    // 닉네임 변경 함수
+    window.changeMyNickname = function() {
+      const newName = document.getElementById('nicknameInput').value.trim();
+      if (newName) {
+        myNickname = newName;
+        localStorage.setItem("saved_nickname", newName); // 기기에 저장
+        socket.emit("set_nickname", newName);           // 서버에 반영
+        alert("닉네임이 '" + newName + "'으로 변경되었습니다.");
       }
+    };
+
+    // 메시지 수신 로직 [cite: 10]
+    socket.on("receive_message", (msg) => {
+      console.log(`${msg.nickname}: ${msg.message}`);
+      // 여기에 채팅 UI에 메시지를 추가하는 DOM 코드를 넣으세요.
     });
 
-    socket.on("chat_message", (msg) => {
-      console.log("수신:", msg);
-      // TODO: DOM에 메시지 렌더링
-    });
-
-    socket.on("error", (err) => console.warn("채팅 오류:", err));
-
-    // ✨ 메시지를 보낼 때 현재 닉네임도 같이 보내기
+    // 메시지 전송 로직 [cite: 12]
     window.sendChat = function (text) {
-      socket.emit("chat_message", { 
-        room_id: roomId, 
-        text: text,
-        sender: currentNickname // 바뀐 닉네임 실어서 보내기!
+      if (!text) return;
+      socket.emit("send_message", { 
+        message: text
       });
     };
   })();
