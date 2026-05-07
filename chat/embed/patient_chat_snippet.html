@@ -1,49 +1,43 @@
-<div class="chat-nickname-container">
-  <input type="text" id="nicknameInput" placeholder="닉네임 입력" style="padding:5px;">
-  <button onclick="changeMyNickname()">닉네임 변경</button>
-</div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
 <script>
   (function () {
-    const CHAT_SERVER = "https://ee-main.onrender.com";
-    const socket = io(CHAT_SERVER, { transports: ["websocket", "polling"] });
-
-    // 1. 자동 닉네임 부여 (기기 저장소 확인)
-    let myNickname = localStorage.getItem("saved_nickname");
-    if (!myNickname) {
-      myNickname = "환자_" + Math.random().toString(36).substring(2, 6);
-      localStorage.setItem("saved_nickname", myNickname);
-    }
-
-    socket.on("connect", () => {
-      // 2. 접속 시 내 닉네임을 서버에 알림
-      socket.emit("identify", { nickname: myNickname });
-    });
-
-    // 닉네임 변경 함수
-    window.changeMyNickname = function() {
-      const newName = document.getElementById('nicknameInput').value.trim();
-      if (newName) {
-        myNickname = newName;
-        localStorage.setItem("saved_nickname", newName); // 기기에 저장
-        socket.emit("set_nickname", newName);           // 서버에 반영
-        alert("닉네임이 '" + newName + "'으로 변경되었습니다.");
-      }
-    };
-
-    // 메시지 수신 로직 [cite: 10]
-    socket.on("receive_message", (msg) => {
-      console.log(`${msg.nickname}: ${msg.message}`);
-      // 여기에 채팅 UI에 메시지를 추가하는 DOM 코드를 넣으세요.
-    });
-
-    // 메시지 전송 로직 [cite: 12]
-    window.sendChat = function (text) {
-      if (!text) return;
-      socket.emit("send_message", { 
-        message: text
+      const CHAT_SERVER = "https://ee-main.onrender.com";
+      const socket = io(CHAT_SERVER, { transports: ["websocket", "polling"] });
+  
+      // [중요] 실행되자마자 로컬 스토리지에서 닉네임부터 가져옴
+      let myNickname = localStorage.getItem("saved_nickname") || "익명객체";
+      
+      socket.on("connect", () => {
+          // 연결 즉시 서버에 닉네임 전달 -> 서버는 이걸 받고 과거 내역을 쏴줌
+          socket.emit("identify", { nickname: myNickname });
       });
-    };
+  
+      // 메시지 전송 함수 (이름을 sendChat으로 통일) [cite: 11]
+      window.sendChat = function (text) {
+          if (!text || text.trim() === "") return;
+          // 서버의 handle_send_message가 'message' 키를 기다림 [cite: 4]
+          socket.emit("send_message", { message: text }); 
+      };
+  
+      // 메시지 수신 (과거 내역 + 실시간 메시지 공용) [cite: 10]
+      socket.on("receive_message", (data) => {
+          const chatWindow = document.getElementById("chat-content"); // 실제 채팅창 ID로 변경하세요
+          if (chatWindow) {
+              const msgTag = document.createElement("div");
+              msgTag.innerHTML = `<b>${data.nickname}:</b> ${data.message}`;
+              chatWindow.appendChild(msgTag);
+              chatWindow.scrollTop = chatWindow.scrollHeight; // 스크롤 하단 이동
+          }
+      });
+  
+      // 닉네임 변경 기능
+      window.changeMyNickname = function() {
+          const newName = document.getElementById('nicknameInput').value.trim();
+          if (newName) {
+              myNickname = newName;
+              localStorage.setItem("saved_nickname", newName); // 새로고침 대비 저장
+              socket.emit("set_nickname", newName);
+              location.reload(); // 과거 내역 닉네임 동기화를 위해 새로고침 추천
+          }
+      };
   })();
-</script>
+  </script>

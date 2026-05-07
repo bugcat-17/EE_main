@@ -1,50 +1,60 @@
-<div class="therapist-settings" style="margin-bottom: 10px;">
-  <input type="text" id="therapistNicknameInput" placeholder="치료사 닉네임 입력">
-  <button onclick="updateTherapistNickname()">이름 변경</button>
+<div class="therapist-settings" style="margin-bottom: 10px; padding: 10px; background: #f0f4f8; border-radius: 8px;">
+  <strong>치료사 설정: </strong>
+  <input type="text" id="therapistNicknameInput" placeholder="닉네임 입력 (예: 박선생님)">
+  <button onclick="changeTherapistNickname()">이름 변경 및 내역 불러오기</button>
 </div>
+
+<div id="chat-content" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
+  </div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
 <script>
 (function () {
-  const CHAT_SERVER = "https://ee-main.onrender.com"; [cite: 6]
-  const socket = io(CHAT_SERVER, { transports: ["websocket", "polling"] });
+    const CHAT_SERVER = "https://ee-main.onrender.com"; // [cite: 6]
+    const socket = io(CHAT_SERVER, { transports: ["websocket", "polling"] });
 
-  // 1. 치료사용 로컬 스토리지 키 (환자와 구분하기 위해 'therapist_' 접두어 사용)
-  let currentNickname = localStorage.getItem("therapist_nickname");
-  if (!currentNickname) {
-      currentNickname = "치료사_" + Math.floor(Math.random() * 100);
-      localStorage.setItem("therapist_nickname", currentNickname);
-  }
+    // 1. 치료사 전용 로컬 스토리지 키 사용 (환자와 분리) 
+    let myNickname = localStorage.getItem("therapist_nickname") || "치료사";
 
-  socket.on("connect", () => {
-    // 2. 서버에 치료사 닉네임 등록 알림
-    socket.emit("identify", { nickname: currentNickname }); [cite: 8]
-    console.log("치료사 접속 완료:", currentNickname);
-  });
-
-  // 닉네임 수정 함수
-  window.updateTherapistNickname = function() {
-    const newName = document.getElementById('therapistNicknameInput').value.trim();
-    if (newName) {
-      currentNickname = newName;
-      localStorage.setItem("therapist_nickname", newName); // 기기 저장
-      socket.emit("set_nickname", newName);           // 서버 저장
-      alert("치료사 이름이 '" + newName + "'으로 변경되었습니다.");
-    }
-  };
-
-  // 3. 메시지를 보낼 때 현재 닉네임을 실어서 보냄 [cite: 15]
-  window.sendChat = function (text) {
-    if (!text) return;
-    socket.emit("send_message", { 
-      message: text,
-      sender: currentNickname // 서버의 handle_send_message에서 사용할 이름 [cite: 16]
+    socket.on("connect", () => {
+        // 2. 접속 즉시 서버에 닉네임 전달 -> 서버가 이를 인식하고 과거 내역 30개를 보내줌 
+        socket.emit("identify", { nickname: myNickname }); 
+        console.log("치료사 접속 완료:", myNickname);
     });
-  };
 
-  socket.on("receive_message", (msg) => {
-    console.log("수신:", msg); [cite: 14]
-    // 여기서 화면에 메시지 출력
-  });
+    // 3. 메시지 전송 함수 (서버의 handle_send_message와 통일) 
+    window.sendChat = function (text) {
+        if (!text || text.trim() === "") return;
+        socket.emit("send_message", { 
+            message: text // 서버가 'message' 키를 읽도록 설정 
+        });
+    };
+
+    // 4. 메시지 수신 (과거 내역 + 실시간 메시지 통합 처리) [cite: 3, 5, 14]
+    socket.on("receive_message", (data) => { // [cite: 2]
+        const chatWindow = document.getElementById("chat-content");
+        if (chatWindow) {
+            const msgTag = document.createElement("div");
+            msgTag.style.marginBottom = "5px";
+            msgTag.innerHTML = `<strong>${data.nickname}:</strong> ${data.message}`; // [cite: 3, 5]
+            chatWindow.appendChild(msgTag);
+            chatWindow.scrollTop = chatWindow.scrollHeight; // 자동 스크롤 하단 이동
+        }
+    });
+
+    // 5. 닉네임 변경 및 저장 로직
+    window.changeTherapistNickname = function() {
+        const newName = document.getElementById('therapistNicknameInput').value.trim();
+        if (newName) {
+            myNickname = newName;
+            localStorage.setItem("therapist_nickname", newName); // 로컬 저장 
+            socket.emit("set_nickname", newName); // 서버 닉네임 즉시 갱신
+            
+            // 기존 내역을 새 닉네임 기준으로 다시 정렬하고 싶다면 새로고침 실행
+            location.reload(); 
+        }
+    };
+
+    socket.on("error", (err) => console.warn("채팅 오류:", err));// [cite: 11]
 })();
 </script>
