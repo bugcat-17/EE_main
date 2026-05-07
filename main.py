@@ -19,7 +19,7 @@ from chat.chat_server import register_socket_events # 채팅 로직 가져오기
 load_dotenv() # 이 줄 추가
 
 # DB 테이블 생성
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 # --- [1. mDNS 및 서버 수명 주기 설정] ---
 app = FastAPI()
