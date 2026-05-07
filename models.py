@@ -29,6 +29,7 @@ class ExerciseRecord(Base):
     pain_score = Column(Integer)
     difficulty = Column(String)
     memo = Column(Text)
+    # 관계 설정정
     patient = relationship("Patient", back_populates="records")
     ai_analysis = relationship("AIAnalysis", back_populates="record", uselist=False) # 1:1 관계
 
@@ -40,13 +41,5 @@ class AIAnalysis(Base):
     therapist_summary = Column(Text)
     risk_level = Column(String)
 
-    class AIAnalysis(Base):
-    __tablename__ = "ai_analyses"
-    id = Column(Integer, primary_key=True, index=True)
-    record_id = Column(Integer, ForeignKey("exercise_records.id"))
-    patient_feedback = Column(Text)
-    therapist_summary = Column(Text)
-    risk_level = Column(String)
-
-    # 이 줄이 반드시 있어야 합니다!
+    # 1:1 관계를 완성하는 중요한 줄
     record = relationship("ExerciseRecord", back_populates="ai_analysis")
