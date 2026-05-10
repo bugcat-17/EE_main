@@ -1,11 +1,10 @@
 """
-chat_server.py - Socket.IO 이벤트 핸들러 (수정된 버전)
+chat_server.py - Socket.IO 이벤트 핸들러 (1:1 매칭 지원 버전)
 
 주요 수정 사항:
-1. ✅ send_message에서 broadcast 추가 (모든 클라이언트에게 전송)
-2. ✅ set_nickname에서 async/await 처리 개선
-3. ✅ 에러 처리 추가
-4. ✅ DB 연결 안정성 개선
+1. ✅ 유저별 상태 관리 (역할, 접속 방 번호 추가)
+2. ✅ 대기 중인 환자 목록을 상담사에게 실시간 브로드캐스트
+3. ✅ 1:1 매칭(Room) 생성 및 방 내부 메시지 전송 로직 추가
 """
 
 import socketio
@@ -16,161 +15,182 @@ from sqlalchemy.exc import SQLAlchemyError
 def register_socket_events(sio):
     """Socket.IO 이벤트 핸들러 등록"""
     
-    # 접속 중인 사용자 관리 (sid: nickname)
+    # 딕셔너리 구조 변경: sid: {'nickname': '..', 'role': '..', 'room': '..'}
     connected_users = {}
+
+    async def broadcast_patient_list():
+        """대기 중인(방이 없는) 환자 목록을 모든 상담사에게 전송하는 헬퍼 함수"""
+        # 1. 대기 중인 환자 목록 추출
+        waiting_patients = [
+            {'sid': sid, 'nickname': info['nickname']}
+            for sid, info in connected_users.items()
+            if info['role'] == 'patient' and info['room'] is None
+        ]
+        
+        # 2. 접속 중인 모든 상담사에게 목록 전송
+        for sid, info in connected_users.items():
+            if info['role'] == 'therapist':
+                try:
+                    await sio.emit('update_patient_list', waiting_patients, to=sid)
+                except Exception as e:
+                    print(f"⚠️ 환자 목록 전송 실패 (SID: {sid}): {e}")
 
     @sio.event
     async def connect(sid, environ):
-        """
-        클라이언트 접속 시 호출
-        
-        Args:
-            sid: Socket ID (고유 식별자)
-            environ: 연결 환경 정보
-        """
-        connected_users[sid] = f"User_{sid[:4]}"
+        # 초기 접속 시에는 역할과 방이 없는 상태로 등록
+        connected_users[sid] = {'nickname': f"User_{sid[:4]}", 'role': None, 'room': None}
         print(f"✅ 사용자 접속 (SID: {sid})")
 
     @sio.on('identify')
     async def handle_identify(sid, data):
-        """
-        클라이언트가 자신의 닉네임을 서버에 알림
-        서버는 이 닉네임을 기반으로 과거 메시지 30개를 전송
-        
-        Args:
-            sid: Socket ID
-            data: {'nickname': '사용자_닉네임'} 형식
-        """
+        """클라이언트 역할 및 닉네임 식별"""
         nickname = data.get('nickname', f"User_{sid[:4]}")
-        connected_users[sid] = nickname
-        print(f"👤 사용자 식별됨 - {nickname} (SID: {sid})")
+        role = data.get('role', 'patient') # 기본값 환자
         
+        connected_users[sid]['nickname'] = nickname
+        connected_users[sid]['role'] = role
+        
+        print(f"👤 사용자 식별됨 - {nickname} (Role: {role}, SID: {sid})")
+        
+        # 식별 완료 후 환자 목록 갱신 (누군가 새로 들어왔으므로)
+        await broadcast_patient_list()
+        
+        # ⚠️ 참고: 1:1 채팅이므로 글로벌 과거 메시지를 불러오는 로직은 
+        # 나중에 DB에 'room_id' 컬럼을 추가한 뒤 해당 방의 메시지만 불러오도록 수정해야 합니다.
+        # 일단 기존 DB 로직은 유지합니다.
         db = SessionLocal()
         try:
-            # DB에서 최근 30개 메시지 조회 (역순)
             prev_messages = db.query(models.ChatLog)\
                 .order_by(models.ChatLog.id.desc())\
                 .limit(30)\
                 .all()
             
-            # 과거 메시지를 오래된 것부터 전송
             for msg in reversed(prev_messages):
                 await sio.emit('receive_message', {
                     'nickname': msg.nickname,
                     'message': msg.message
                 }, to=sid)
-                
         except SQLAlchemyError as e:
-            print(f"❌ DB 조회 오류 (identify): {e}")
+            print(f"❌ DB 조회 오류: {e}")
         finally:
             db.close()
+
+    @sio.on('request_match')
+    async def handle_request_match(sid, data):
+        """상담사가 특정 환자와의 1:1 매칭을 요청"""
+        target_patient_sid = data.get('target_sid')
+        therapist_info = connected_users.get(sid)
+        patient_info = connected_users.get(target_patient_sid)
+
+        # 유효성 검사
+        if not therapist_info or not patient_info:
+            await sio.emit('error', {'message': '유효하지 않은 대상입니다.'}, to=sid)
+            return
+
+        if therapist_info['role'] != 'therapist':
+            await sio.emit('error', {'message': '상담사만 매칭을 요청할 수 있습니다.'}, to=sid)
+            return
+
+        # 고유 방 번호 생성 (상담사SID_환자SID)
+        room_id = f"room_{sid}_{target_patient_sid}"
+        
+        # 1. 두 사람을 상태 테이블에서 방에 할당
+        therapist_info['room'] = room_id
+        patient_info['room'] = room_id
+
+        # 2. Socket.io 가상 Room에 조인
+        sio.enter_room(sid, room_id)
+        sio.enter_room(target_patient_sid, room_id)
+
+        print(f"🤝 1:1 매칭 성사 - 방: {room_id} (상담사: {therapist_info['nickname']}, 환자: {patient_info['nickname']})")
+
+        # 3. 양측에 매칭 성공 알림
+        await sio.emit('match_success', {
+            'room_id': room_id,
+            'partner_nickname': patient_info['nickname'],
+            'message': f"{patient_info['nickname']} 환자님과 연결되었습니다."
+        }, to=sid)
+        
+        await sio.emit('match_success', {
+            'room_id': room_id,
+            'partner_nickname': therapist_info['nickname'],
+            'message': f"{therapist_info['nickname']} 상담사님과 연결되었습니다."
+        }, to=target_patient_sid)
+
+        # 4. 환자가 매칭되었으므로 남은 대기 목록을 다시 뿌림
+        await broadcast_patient_list()
 
     @sio.on('send_message')
     async def handle_send_message(sid, data):
-        """
-        클라이언트가 메시지 전송
-        
-        1. 메시지를 DB에 저장
-        2. 모든 클라이언트에게 broadcast
-        
-        Args:
-            sid: Socket ID
-            data: {'message': '메시지 내용'} 형식
-        """
-        # 현재 사용자 닉네임 조회
-        nickname = connected_users.get(sid, "Unknown")
-        message = data.get('message', '').strip()
-        
-        # 빈 메시지 필터링
-        if not message:
-            print(f"⚠️ {nickname}에서 빈 메시지 수신")
+        """특정 방(Room)으로 메시지 전송"""
+        user_info = connected_users.get(sid)
+        if not user_info:
             return
 
+        nickname = user_info['nickname']
+        room_id = user_info['room']
+        message = data.get('message', '').strip()
+        
+        if not message:
+            return
+
+        # (기존 DB 저장 로직 - 향후 모델에 room_id 컬럼 추가 권장)
         db = SessionLocal()
         try:
-            # 📝 DB에 메시지 저장
             new_log = models.ChatLog(nickname=nickname, message=message)
             db.add(new_log)
             db.commit()
-            print(f"💾 메시지 저장 완료 - {nickname}: {message}")
-            
         except SQLAlchemyError as e:
-            print(f"❌ DB 저장 오류 (send_message): {e}")
+            print(f"❌ DB 저장 오류: {e}")
             db.rollback()
-            return
-            
         finally:
             db.close()
 
-        # 🔑 핵심 수정: await 추가하고 broadcast (모든 클라이언트에게 전송)
-        try:
+        # 🔑 핵심 수정: 전체 브로드캐스트가 아닌, 해당 '방(Room)'에만 전송
+        if room_id:
+            try:
+                await sio.emit('receive_message', {
+                    'nickname': nickname,
+                    'message': message
+                }, room=room_id)  # <-- to= 대신 room= 사용
+                print(f"📤 [방: {room_id}] 메시지 전송 - {nickname}: {message}")
+            except Exception as e:
+                print(f"❌ 메시지 전송 오류: {e}")
+        else:
+            # 방에 입장하지 않은 상태에서 보낸 메시지 (대기실 전체 채팅 - 원치 않으면 삭제 가능)
             await sio.emit('receive_message', {
                 'nickname': nickname,
-                'message': message
+                'message': f"[대기실] {message}"
             })
-            print(f"📤 메시지 broadcast 완료 - {nickname}")
-            
-        except Exception as e:
-            print(f"❌ 메시지 전송 오류: {e}")
 
     @sio.on('set_nickname')
     async def handle_set_nickname(sid, new_nickname):
-        """
-        클라이언트가 닉네임을 변경
-        
-        Args:
-            sid: Socket ID
-            new_nickname: 새로운 닉네임 (문자열)
-        """
-        old_nickname = connected_users.get(sid, "Unknown")
-        new_nickname = new_nickname.strip() if isinstance(new_nickname, str) else str(new_nickname)
-        
-        # 빈 닉네임 필터링
-        if not new_nickname:
-            print(f"⚠️ {old_nickname}에서 빈 닉네임 수신")
-            return
-        
-        # 닉네임 변경
-        connected_users[sid] = new_nickname
-        print(f"📝 닉네임 변경 - {old_nickname} → {new_nickname} (SID: {sid})")
-        
-        # (선택사항) 다른 사용자들에게 닉네임 변경 알림
-        try:
-            await sio.emit('user_renamed', {
-                'old_nickname': old_nickname,
-                'new_nickname': new_nickname,
-                'sid': sid
-            })
-        except Exception as e:
-            print(f"⚠️ user_renamed 이벤트 전송 실패: {e}")
+        if sid in connected_users:
+            old_nickname = connected_users[sid]['nickname']
+            connected_users[sid]['nickname'] = new_nickname
+            print(f"📝 닉네임 변경 - {old_nickname} → {new_nickname}")
+            # 닉네임이 바뀌었으니 상담사 화면의 환자 목록도 갱신
+            if connected_users[sid]['role'] == 'patient':
+                await broadcast_patient_list()
 
     @sio.event
     async def disconnect(sid):
-        """
-        클라이언트 연결 해제
-        
-        Args:
-            sid: Socket ID
-        """
-        nickname = connected_users.pop(sid, "Unknown")
-        print(f"❌ 사용자 퇴장 - {nickname} (SID: {sid})")
-
-
-# ============================================================================
-# 사용 방법 (main.py에서)
-# ============================================================================
-#
-# from flask import Flask
-# from flask_socketio import SocketIO
-# from chat_server import register_socket_events
-#
-# app = Flask(__name__)
-# sio = SocketIO(app, cors_allowed_origins="*")
-#
-# # 소켓 이벤트 등록
-# register_socket_events(sio)
-#
-# if __name__ == "__main__":
-#     sio.run(app, host="0.0.0.0", port=5000, debug=True)
-#
-# ============================================================================
+        user_info = connected_users.pop(sid, None)
+        if user_info:
+            nickname = user_info['nickname']
+            room_id = user_info['room']
+            role = user_info['role']
+            
+            print(f"❌ 사용자 퇴장 - {nickname} (SID: {sid})")
+            
+            # 채팅 중이었다면 상대방에게 알림
+            if room_id:
+                await sio.emit('receive_message', {
+                    'nickname': '📡 시스템',
+                    'message': f'{nickname}님이 대화방을 나갔습니다.'
+                }, room=room_id)
+                sio.leave_room(sid, room_id)
+            
+            # 대기 중이던 환자가 나갔다면 목록 갱신
+            if role == 'patient' and not room_id:
+                await broadcast_patient_list()
