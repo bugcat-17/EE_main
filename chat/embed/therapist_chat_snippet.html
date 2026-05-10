@@ -1,52 +1,38 @@
-
-<!-- therapist_chat_snippet.html - 상담사용 Snippet (embed용) -->
-<!-- 다른 페이지에 포함되어 사용되는 파일 -->
-
 <div class="therapist-settings" style="margin-bottom: 10px; padding: 10px; background: #f0f4f8; border-radius: 8px;">
     <strong>치료사 설정: </strong>
     <input type="text" id="therapistNicknameInput" placeholder="닉네임 입력 (예: 박선생님)">
     <button id="therapistNicknameBtn" onclick="changeTherapistNickname()">이름 변경 및 내역 불러오기</button>
   </div>
   
-  <div id="chat-content" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px;">
+  <div id="patient-list-container" style="margin-bottom: 10px; padding: 10px; background: #e8f5e9; border-radius: 8px; border: 1px solid #c8e6c9;">
+    <strong style="color: #2e7d32;">접속 중인 대기 환자:</strong>
+    <ul id="patient-list" style="list-style: none; padding-left: 0; margin: 5px 0 0 0; font-size: 0.9em;">
+        <li style="color: #666;">대기 중인 환자가 없습니다.</li>
+    </ul>
   </div>
-  
+    
+  <div id="chat-content" style="height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background: #fff;">
+  </div>
+    
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <script>
   (function () {
-      // ========================================================================
-      // 1. 초기화 및 설정
-      // ========================================================================
-      
       const CHAT_SERVER = "https://ee-main.onrender.com";
       const chatWindow = document.getElementById("chat-content");
       const therapistNicknameInput = document.getElementById('therapistNicknameInput');
       const therapistNicknameBtn = document.getElementById('therapistNicknameBtn');
       
       let myNickname = localStorage.getItem("therapist_nickname") || "치료사";
-      let isChangingNickname = false;  // ✅ 상태 관리 플래그 추가
-      
-      // 초기 닉네임 표시
+      let isChangingNickname = false;
       therapistNicknameInput.value = myNickname;
-      
-      // ========================================================================
-      // 2. Socket.IO 연결
-      // ========================================================================
       
       const socket = io(CHAT_SERVER, { 
           transports: ["websocket", "polling"],
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionAttempts: 5
+          reconnection: true
       });
   
-      // ========================================================================
-      // 3. 메시지 표시 함수
-      // ========================================================================
-      
       function appendChatMessage(nickname, message, isSystem = false) {
           if (!chatWindow) return;
-          
           const msgTag = document.createElement("div");
           msgTag.style.marginBottom = "5px";
           
@@ -58,154 +44,91 @@
               msgTag.style.padding = "5px 0";
               msgTag.textContent = message;
           } else {
-              // XSS 방지
-              const safeMessage = escapeHtml(message);
-              msgTag.innerHTML = `<strong>${nickname}:</strong> ${safeMessage}`;
+              msgTag.innerHTML = `<strong>${nickname}:</strong> ${escapeHtml(message)}`;
           }
-          
           chatWindow.appendChild(msgTag);
           chatWindow.scrollTop = chatWindow.scrollHeight;
       }
   
-      // XSS 방지: HTML 이스케이프
       function escapeHtml(text) {
-          const map = {
-              '&': '&amp;',
-              '<': '&lt;',
-              '>': '&gt;',
-              '"': '&quot;',
-              "'": '&#039;'
-          };
-          return text.replace(/[&<>"']/g, m => map[m]);
+          return text.replace(/[&<>"']/g, m => ({'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'}[m]));
       }
   
-      // ========================================================================
-      // 4. Socket 이벤트 핸들러
-      // ========================================================================
-  
-      // ✅ 연결 성공
+      // ✅ 연결 성공 (역할 명시)
       socket.on("connect", () => {
           console.log("✅ 치료사 접속 완료:", myNickname);
-          // 서버에 닉네임 전달 -> 서버가 과거 내역 30개를 보내줌
-          socket.emit("identify", { nickname: myNickname });
-          appendChatMessage('📡 시스템', '서버에 연결되었습니다', true);
+          // 역할을 'therapist'로 전달
+          socket.emit("identify", { nickname: myNickname, role: "therapist" });
+          appendChatMessage('📡 시스템', '서버에 연결되었습니다. 환자 목록을 기다립니다.', true);
       });
   
-      // ✅ 메시지 수신 (과거 내역 + 실시간 메시지 통합 처리)
+      // ✅ 대기 중인 환자 목록 수신 (서버로부터 실시간 업데이트)
+      socket.on("update_patient_list", (patients) => {
+          const listEl = document.getElementById("patient-list");
+          listEl.innerHTML = "";
+          
+          if (patients.length === 0) {
+              listEl.innerHTML = '<li style="color: #666;">대기 중인 환자가 없습니다.</li>';
+              return;
+          }
+          
+          patients.forEach(p => {
+              const li = document.createElement("li");
+              li.style.marginBottom = "5px";
+              // 환자 옆에 [상담 시작] 버튼 생성
+              li.innerHTML = `
+                <span style="display:inline-block; width:120px;">👤 ${escapeHtml(p.nickname)}</span> 
+                <button onclick="requestMatch('${p.sid}')" style="background:#2e7d32; color:white; border:none; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:0.8em;">상담 시작</button>
+              `;
+              listEl.appendChild(li);
+          });
+      });
+  
+      // ✅ 매칭 요청 버튼 함수 (글로벌에서 접근 가능하도록 설정)
+      window.requestMatch = function(patientSid) {
+          if (!socket.connected) {
+              alert("서버 연결이 끊어져 매칭할 수 없습니다.");
+              return;
+          }
+          socket.emit("request_match", { target_sid: patientSid });
+      };
+  
+      // ✅ 매칭 성공 수신
+      socket.on("match_success", (data) => {
+          appendChatMessage('🤝 시스템', data.message, true);
+      });
+  
       socket.on("receive_message", (data) => {
           appendChatMessage(data.nickname, data.message, false);
       });
   
-      // ✅ 닉네임 변경 알림 (선택사항)
-      socket.on("user_renamed", (data) => {
-          console.log("👤 닉네임 변경:", data);
-      });
-  
-      // ✅ 연결 끊김
       socket.on("disconnect", () => {
-          console.log("❌ 서버와의 연결이 끊어짐");
           appendChatMessage('📡 시스템', '서버와의 연결이 끊어졌습니다', true);
-          therapistNicknameBtn.disabled = true;
       });
   
-      // ✅ 연결 오류
-      socket.on("connect_error", (error) => {
-          console.error('❌ 연결 오류:', error);
-          appendChatMessage('📡 시스템', '연결 오류 발생: ' + error.message, true);
-          therapistNicknameBtn.disabled = true;
-      });
-  
-      // ✅ 재연결 성공
-      socket.on("reconnect", () => {
-          console.log("✅ 재연결 성공");
-          socket.emit("identify", { nickname: myNickname });
-          appendChatMessage('📡 시스템', '서버에 재연결되었습니다', true);
-          therapistNicknameBtn.disabled = false;
-      });
-  
-      // ✅ 에러 처리
-      socket.on("error", (err) => {
-          console.warn("채팅 오류:", err);
-          appendChatMessage('📡 시스템', '오류 발생: ' + JSON.stringify(err), true);
-      });
-  
-      // ========================================================================
-      // 5. 메시지 전송 함수
-      // ========================================================================
-      
       window.sendChat = function (text) {
-          if (!text || text.trim() === "") return;
-          
-          // ✅ Socket 연결 확인
-          if (!socket.connected) {
-              alert('⚠️ 서버와의 연결이 끊겼습니다.');
-              return;
-          }
-          
-          socket.emit("send_message", { 
-              message: text.trim()
-          });
+          if (!text || text.trim() === "" || !socket.connected) return;
+          socket.emit("send_message", { message: text.trim() });
       };
   
-      // ========================================================================
-      // 6. 닉네임 변경 함수 (수정: location.reload() 제거)
-      // ========================================================================
-      
       window.changeTherapistNickname = function() {
           const newName = therapistNicknameInput.value.trim();
-          
-          // ✅ 유효성 검사
-          if (!newName) {
-              alert('❌ 닉네임을 입력해주세요');
-              therapistNicknameInput.focus();
-              return;
-          }
-          
-          if (newName === myNickname) {
-              alert('ℹ️ 현재 닉네임과 같습니다');
-              return;
-          }
+          if (!newName || newName === myNickname || isChangingNickname) return;
   
-          if (isChangingNickname) {
-              alert('⏳ 닉네임 변경 중입니다. 잠시만 기다려주세요.');
-              return;
-          }
-  
-          // ✅ 상태 관리 시작
           isChangingNickname = true;
           therapistNicknameBtn.disabled = true;
           therapistNicknameBtn.textContent = '변경 중...';
   
-          try {
-              const oldNickname = myNickname;
-              
-              // 1️⃣ 로컬 업데이트
-              myNickname = newName;
-              localStorage.setItem("therapist_nickname", newName);
-              
-              // 2️⃣ 시스템 메시지 표시
-              appendChatMessage('📝 시스템', 
-                              `닉네임이 '${oldNickname}'에서 '${newName}'으로 변경되었습니다`,
-                              true);
-              
-              // 3️⃣ 서버에 알림 (location.reload() 제거!)
-              socket.emit("set_nickname", newName);
-              
-              console.log(`✅ 닉네임 변경 완료: ${oldNickname} → ${newName}`);
-  
-          } catch (error) {
-              console.error('❌ 닉네임 변경 실패:', error);
-              alert('❌ 닉네임 변경에 실패했습니다.');
-              // 롤백
-              myNickname = localStorage.getItem("therapist_nickname");
-              therapistNicknameInput.value = myNickname;
-          } finally {
-              isChangingNickname = false;
-              therapistNicknameBtn.disabled = false;
-              therapistNicknameBtn.textContent = '이름 변경 및 내역 불러오기';
-          }
+          const oldNickname = myNickname;
+          myNickname = newName;
+          localStorage.setItem("therapist_nickname", newName);
+          
+          appendChatMessage('📝 시스템', `닉네임이 '${oldNickname}'에서 '${newName}'으로 변경되었습니다`, true);
+          socket.emit("set_nickname", newName);
+          
+          isChangingNickname = false;
+          therapistNicknameBtn.disabled = false;
+          therapistNicknameBtn.textContent = '이름 변경 및 내역 불러오기';
       };
-  
   })();
   </script>
-  

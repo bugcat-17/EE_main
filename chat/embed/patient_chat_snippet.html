@@ -3,142 +3,35 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>환자 채팅 (닉네임 저장형) - 수정됨</title>
+  <title>환자 채팅 (1:1 매칭 적용)</title>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
   <style>
-    /* 기존 스타일 유지 */
+    /* 기존 스타일 그대로 유지 */
     :root { 
-      --bg: #0f1419; 
-      --panel: #1a2332; 
-      --border: #2d3a4d; 
-      --text: #e7ecf3; 
-      --muted: #8b9cb3; 
-      --accent: #3d8bfd; 
+      --bg: #0f1419; --panel: #1a2332; --border: #2d3a4d; 
+      --text: #e7ecf3; --muted: #8b9cb3; --accent: #3d8bfd; 
     }
     * { box-sizing: border-box; }
-    body { 
-      margin: 0; 
-      min-height: 100vh; 
-      font-family: "Segoe UI", sans-serif; 
-      background: var(--bg); 
-      color: var(--text); 
-      display: flex; 
-      flex-direction: column; 
-    }
-    header { 
-      padding: 0.85rem 1rem; 
-      border-bottom: 1px solid var(--border); 
-      background: var(--panel); 
-    }
-    header h1 { 
-      margin: 0; 
-      font-size: 1rem; 
-      display: inline-block; 
-    }
-    .nickname-area { 
-      margin-top: 5px; 
-      display: flex; 
-      gap: 5px; 
-      align-items: center;
-    }
-    .nickname-area input { 
-      background: #000; 
-      border: 1px solid var(--border); 
-      color: #fff; 
-      padding: 3px 8px; 
-      border-radius: 4px; 
-      font-size: 0.8rem; 
-      flex: 1;
-      max-width: 200px;
-    }
-    .nickname-area button { 
-      font-size: 0.7rem; 
-      cursor: pointer; 
-      background: var(--accent); 
-      color: white; 
-      border: none; 
-      border-radius: 4px;
-      padding: 4px 10px;
-      font-weight: 600;
-      transition: opacity 0.2s ease;
-    }
-    .nickname-area button:hover {
-      opacity: 0.8;
-    }
-    .nickname-area button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .log { 
-      flex: 1; 
-      overflow-y: auto; 
-      padding: 0.75rem 1rem; 
-      font-size: 0.88rem; 
-    }
-    .row { 
-      margin-bottom: 0.5rem;
-      line-height: 1.4;
-    }
-    .meta { 
-      color: var(--muted); 
-      font-size: 0.75rem; 
-      text-align: center; 
-      margin: 10px 0;
-      padding: 5px 0;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-    }
-    .me { 
-      color: #c4b5fd; 
-      text-align: right;
-      background: rgba(196, 181, 253, 0.1);
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .composer { 
-      border-top: 1px solid var(--border); 
-      padding: 0.65rem; 
-      display: flex; 
-      gap: 0.5rem; 
-      background: var(--panel); 
-    }
-    .composer input { 
-      flex: 1; 
-      background: var(--bg); 
-      border: 1px solid var(--border); 
-      border-radius: 8px; 
-      color: var(--text); 
-      padding: 0.5rem; 
-    }
-    .composer button { 
-      background: var(--accent); 
-      border: none; 
-      color: #fff; 
-      padding: 0.5rem 1rem; 
-      border-radius: 8px; 
-      cursor: pointer;
-      font-weight: 600;
-      transition: opacity 0.2s ease;
-    }
-    .composer button:hover {
-      opacity: 0.85;
-    }
-    .composer button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .status { 
-      float: right; 
-      font-size: 0.75rem;
-      padding: 0.3rem 0.5rem;
-      border-radius: 3px;
-      background: rgba(255, 107, 107, 0.2);
-      color: #ff6b6b;
-    }
-    .status.ok { 
-      background: rgba(110, 231, 183, 0.2);
-      color: #6ee7b7; 
-    }
+    body { margin: 0; min-height: 100vh; font-family: "Segoe UI", sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+    header { padding: 0.85rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+    header h1 { margin: 0; font-size: 1rem; display: inline-block; }
+    .nickname-area { margin-top: 5px; display: flex; gap: 5px; align-items: center; }
+    .nickname-area input { background: #000; border: 1px solid var(--border); color: #fff; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; flex: 1; max-width: 200px; }
+    .nickname-area button { font-size: 0.7rem; cursor: pointer; background: var(--accent); color: white; border: none; border-radius: 4px; padding: 4px 10px; font-weight: 600; transition: opacity 0.2s ease; }
+    .nickname-area button:hover { opacity: 0.8; }
+    .nickname-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .log { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; font-size: 0.88rem; }
+    .row { margin-bottom: 0.5rem; line-height: 1.4; }
+    .meta { color: var(--muted); font-size: 0.75rem; text-align: center; margin: 10px 0; padding: 5px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .me { color: #c4b5fd; text-align: right; background: rgba(196, 181, 253, 0.1); padding: 4px 8px; border-radius: 4px; }
+    .composer { border-top: 1px solid var(--border); padding: 0.65rem; display: flex; gap: 0.5rem; background: var(--panel); }
+    .composer input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 0.5rem; }
+    .composer button { background: var(--accent); border: none; color: #fff; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600; transition: opacity 0.2s ease; }
+    .composer button:hover { opacity: 0.85; }
+    .composer button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { float: right; font-size: 0.75rem; padding: 0.3rem 0.5rem; border-radius: 3px; background: rgba(255, 107, 107, 0.2); color: #ff6b6b; }
+    .status.ok { background: rgba(110, 231, 183, 0.2); color: #6ee7b7; }
+    .status.waiting { background: rgba(255, 204, 0, 0.2); color: #ffd700; } /* 대기 중 상태 컬러 추가 */
   </style>
 </head>
 <body>
@@ -159,11 +52,7 @@
   </form>
 
   <script>
-    // ========================================================================
-    // 1. 설정 및 변수 초기화
-    // ========================================================================
-    
-    const CHAT_ORIGIN = "https://ee-main.onrender.com"; // 서버 주소
+    const CHAT_ORIGIN = "https://ee-main.onrender.com"; 
     const logEl = document.getElementById("log");
     const st = document.getElementById("st");
     const input = document.getElementById("input");
@@ -172,223 +61,83 @@
     const sendBtn = document.getElementById("sendBtn");
     const form = document.getElementById("form");
 
-    let myNickname = "";
-    let isChangingNickname = false; // 닉네임 변경 중인지 여부
+    let myNickname = localStorage.getItem("saved_nickname") || ("환자_" + Math.floor(Math.random() * 1000));
+    nicknameInput.value = myNickname;
+    localStorage.setItem("saved_nickname", myNickname);
+    let isChangingNickname = false;
 
-    // ========================================================================
-    // 2. 닉네임 초기 로드 (로컬 스토리지)
-    // ========================================================================
-    
-    function loadNickname() {
-      myNickname = localStorage.getItem("saved_nickname");
-      if (!myNickname) {
-        myNickname = "환자_" + Math.floor(Math.random() * 1000);
-        localStorage.setItem("saved_nickname", myNickname);
-      }
-      nicknameInput.value = myNickname;
-      return myNickname;
-    }
+    const socket = io(CHAT_ORIGIN, { transports: ["websocket", "polling"] });
 
-    // ========================================================================
-    // 3. Socket.IO 연결
-    // ========================================================================
-    
-    const socket = io(CHAT_ORIGIN, {
-      transports: ["websocket", "polling"],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5
-    });
-
-    // ========================================================================
-    // 4. 메시지 표시 함수
-    // ========================================================================
-    
     function appendLog(nickname, text, isMe = false, isMeta = false) {
       const row = document.createElement("div");
-      
       if (isMeta) {
-        row.className = "row meta";
-        row.textContent = text;
+        row.className = "row meta"; row.textContent = text;
       } else {
         row.className = "row" + (isMe ? " me" : "");
         row.innerHTML = `<strong>${nickname}:</strong> ${escapeHtml(text)}`;
       }
-      
       logEl.appendChild(row);
-      logEl.scrollTop = logEl.scrollHeight; // 자동 스크롤
+      logEl.scrollTop = logEl.scrollHeight;
     }
 
-    // XSS 방지: HTML 이스케이프
     function escapeHtml(text) {
-      const map = {
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#039;'
-      };
-      return text.replace(/[&<>"']/g, m => map[m]);
+      return text.replace(/[&<>"']/g, m => ({'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'}[m]));
     }
 
-    // ========================================================================
-    // 5. Socket 이벤트 핸들러
-    // ========================================================================
-
-    // ✅ 연결 성공
     socket.on("connect", function () {
-      console.log("✅ 서버에 연결됨");
-      st.textContent = "연결됨 (" + myNickname + ")";
+      st.textContent = "대기실 접속됨 (" + myNickname + ")";
+      st.className = "status waiting";
+      // ✅ 역할을 'patient'로 명시하여 서버에 전달
+      socket.emit("identify", { nickname: myNickname, role: "patient" });
+      appendLog('📡 시스템', '서버에 연결되었습니다. 상담사 연결을 대기 중입니다.', false, true);
+    });
+
+    // ✅ 매칭 성공 시 이벤트
+    socket.on("match_success", function(data) {
+      st.textContent = "상담 중 (" + myNickname + ")";
       st.className = "status ok";
-      
-      // 서버에 닉네임 알림 (과거 메시지 30개 요청)
-      socket.emit("identify", { nickname: myNickname });
-      appendLog('📡 시스템', '서버에 연결되었습니다', false, true);
+      appendLog('🤝 시스템', data.message, false, true);
     });
 
-    // ✅ 메시지 수신 (실시간 + 과거 기록)
     socket.on("receive_message", function (data) {
-      const isMe = (data.nickname === myNickname);
-      appendLog(data.nickname, data.message, isMe, false);
+      appendLog(data.nickname, data.message, data.nickname === myNickname, false);
     });
 
-    // ✅ 닉네임 변경 알림 (선택사항)
-    socket.on("user_renamed", function (data) {
-      console.log("👤 닉네임 변경:", data);
-      // 필요하면 UI 업데이트
-    });
-
-    // ✅ 연결 끊김
     socket.on("disconnect", () => {
-      console.log("❌ 서버와의 연결이 끊어짐");
-      st.textContent = "연결 끊김";
-      st.className = "status err";
+      st.textContent = "연결 끊김"; st.className = "status err";
       appendLog('📡 시스템', '서버와의 연결이 끊어졌습니다', false, true);
-      disableInputs(true); // 입력 비활성화
-    });
-
-    // ✅ 연결 오류
-    socket.on("connect_error", (error) => {
-      console.error('❌ 연결 오류:', error);
-      st.textContent = "연결 오류";
-      st.className = "status err";
-      appendLog('📡 시스템', '연결 오류 발생: ' + error.message, false, true);
       disableInputs(true);
     });
 
-    // ✅ 재연결 성공
-    socket.on("reconnect", () => {
-      console.log("✅ 재연결 성공");
-      st.textContent = "재연결됨 (" + myNickname + ")";
-      st.className = "status ok";
-      // 재연결 후 닉네임 재확인
-      socket.emit("identify", { nickname: myNickname });
-      disableInputs(false);
-      appendLog('📡 시스템', '서버에 재연결되었습니다', false, true);
-    });
-
-    // ========================================================================
-    // 6. 메시지 전송
-    // ========================================================================
-    
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       const t = input.value.trim();
-      
-      if (!t) {
-        return; // 빈 메시지 무시
-      }
-
-      // Socket 연결 확인
-      if (!socket.connected) {
-        alert('⚠️ 서버와의 연결이 끊겼습니다. 페이지를 새로고침해주세요.');
-        return;
-      }
-
-      // 메시지 전송 (서버의 handle_send_message가 'message' 키를 읽음)
+      if (!t || !socket.connected) return;
       socket.emit("send_message", { message: t });
       input.value = "";
-      input.focus();
     });
 
-    // ========================================================================
-    // 7. 닉네임 변경 함수 (수정: location.reload() 제거)
-    // ========================================================================
-    
     window.changeNickname = function() {
       const newName = nicknameInput.value.trim();
+      if (!newName || newName === myNickname || isChangingNickname) return;
+      isChangingNickname = true; disableInputs(true); nicknameBtn.textContent = '변경 중...';
+
+      const oldNickname = myNickname;
+      myNickname = newName;
+      localStorage.setItem("saved_nickname", newName);
       
-      // 유효성 검사
-      if (!newName) {
-        alert('❌ 닉네임을 입력해주세요');
-        nicknameInput.focus();
-        return;
-      }
+      appendLog('📝 시스템', `닉네임이 '${oldNickname}'에서 '${newName}'으로 변경되었습니다`, false, true);
+      socket.emit("set_nickname", newName);
       
-      if (newName === myNickname) {
-        alert('ℹ️ 현재 닉네임과 같습니다');
-        return;
-      }
-
-      if (isChangingNickname) {
-        alert('⏳ 닉네임 변경 중입니다. 잠시만 기다려주세요.');
-        return;
-      }
-
-      // 닉네임 변경 처리 시작
-      isChangingNickname = true;
-      disableInputs(true);
-      nicknameBtn.textContent = '변경 중...';
-
-      try {
-        // 1. 로컬 닉네임 업데이트
-        const oldNickname = myNickname;
-        myNickname = newName;
-        localStorage.setItem("saved_nickname", newName);
-        
-        // 2. 상태 메시지 표시
-        appendLog('📝 시스템', `닉네임이 '${oldNickname}'에서 '${newName}'으로 변경되었습니다`, false, true);
-        
-        // 3. 서버에 닉네임 변경 알림
-        socket.emit("set_nickname", newName);
-        
-        // 4. UI 갱신
-        st.textContent = `연결됨 (${newName})`;
-        
-        // 5. 입력 필드 비우기
-        nicknameInput.placeholder = '새 닉네임 입력...';
-        
-        console.log(`✅ 닉네임 변경 완료: ${oldNickname} → ${newName}`);
-
-      } catch (error) {
-        console.error('❌ 닉네임 변경 실패:', error);
-        alert('❌ 닉네임 변경에 실패했습니다.');
-        // 롤백
-        myNickname = localStorage.getItem("saved_nickname");
-        nicknameInput.value = myNickname;
-      } finally {
-        isChangingNickname = false;
-        nicknameBtn.textContent = '변경';
-        disableInputs(false);
-      }
+      st.textContent = st.textContent.replace(oldNickname, newName);
+      
+      isChangingNickname = false; nicknameBtn.textContent = '변경'; disableInputs(false);
     };
 
-    // ========================================================================
-    // 8. UI 제어 함수
-    // ========================================================================
-    
     function disableInputs(disabled) {
-      input.disabled = disabled;
-      sendBtn.disabled = disabled;
-      nicknameInput.disabled = disabled;
-      nicknameBtn.disabled = disabled;
+      input.disabled = disabled; sendBtn.disabled = disabled;
+      nicknameInput.disabled = disabled; nicknameBtn.disabled = disabled;
     }
-
-    // ========================================================================
-    // 9. 초기화
-    // ========================================================================
-    
-    loadNickname();
   </script>
 </body>
 </html>
