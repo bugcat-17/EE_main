@@ -7,26 +7,22 @@
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
     :root { --bg: #0f1419; --panel: #1a2332; --border: #2d3a4d; --text: #e7ecf3; --accent: #2eb88a; --danger: #ff6b6b; }
-    body { margin: 0; height: 100vh; font-family: sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
+    body { margin: 0; height: 100vh; font-family: sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; overflow: hidden; }
     
-    /* 헤더 및 상태바 */
     header { padding: 10px 15px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
     .room-info { font-size: 0.9rem; font-weight: bold; color: var(--accent); }
     .btn-exit { background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; display: none; }
 
-    /* 대기 환자 목록 섹션 */
     #waiting-area { padding: 15px; background: rgba(46, 184, 138, 0.05); border-bottom: 1px solid var(--border); }
     .patient-item { display: flex; justify-content: space-between; align-items: center; background: var(--panel); padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); }
     .btn-match { background: var(--accent); border: none; color: #0f1419; padding: 4px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
 
-    /* 채팅 로그 구역 */
     .chat-log { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 8px; }
-    .msg { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; position: relative; }
+    .msg { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; position: relative; word-break: break-word; }
     .msg.me { align-self: flex-end; background: var(--accent); color: #0f1419; border-bottom-right-radius: 2px; }
     .msg.other { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
-    .msg.system { align-self: center; background: transparent; color: #8b9cb3; font-size: 0.75rem; border: none; }
+    .msg.system { align-self: center; background: transparent; color: #8b9cb3; font-size: 0.75rem; border: none; text-align: center; }
 
-    /* 하단 컨트롤 */
     .controls { padding: 10px; background: var(--panel); border-top: 1px solid var(--border); display: flex; gap: 8px; }
     input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: white; padding: 10px; border-radius: 8px; outline: none; }
     .btn-clear { background: #4b5563; color: white; border: none; padding: 0 10px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; }
@@ -52,7 +48,7 @@
 </div>
 
 <form class="controls" id="chat-form">
-  <button type="button" class="btn-clear" onclick="clearLog()">지우기</button>
+  <button type="button" class="btn-clear" onclick="clearLog()">기록 지우기</button>
   <input type="text" id="msg-input" placeholder="메시지를 입력하세요..." autocomplete="off">
   <button type="submit" class="btn-send">전송</button>
 </form>
@@ -66,84 +62,94 @@
   const waitingArea = document.getElementById('waiting-area');
   
   let currentRoom = null;
-  let myNickname = "치료사_" + Math.floor(Math.random() * 1000);
+  let myNickname = localStorage.getItem("therapist_nickname") || "치료사_" + Math.floor(Math.random() * 1000);
 
-  // 1. 초기 접속 및 역할 등록
+  // XSS 필터링 함수
+  function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, m => ({'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'}[m]));
+  }
+
+  // 1. 초기 접속
   socket.on('connect', () => {
     socket.emit('identify', { nickname: myNickname, role: 'therapist' });
   });
 
   // 2. 대기 환자 목록 업데이트
   socket.on('update_patient_list', (patients) => {
-    if (currentRoom) return; // 상담 중이면 목록 갱신 무시
+    if (currentRoom) return; // 상담 중이면 무시
     patientList.innerHTML = patients.length === 0 ? '<div style="font-size: 0.85rem; color: #555;">접속한 환자가 없습니다.</div>' : '';
     patients.forEach(p => {
       const div = document.createElement('div');
       div.className = 'patient-item';
-      div.innerHTML = `<span>👤 ${p.nickname}</span><button class="btn-match" onclick="startChat('${p.sid}', '${p.nickname}')">상담하기</button>`;
+      div.innerHTML = `<span>👤 ${escapeHtml(p.nickname)}</span><button class="btn-match" onclick="startChat('${p.sid}', '${escapeHtml(p.nickname)}')">상담하기</button>`;
       patientList.appendChild(div);
     });
   });
 
-  // 3. 상담 시작 (1:1 매칭 요청)
-  function startChat(sid, nickname) {
+  // 3. 상담 시작 요청
+  window.startChat = function(sid, nickname) {
     socket.emit('request_match', { target_sid: sid });
-    appendMsg('시스템', `${nickname} 님에게 상담 요청을 보냈습니다.`, 'system');
   }
 
-  // 4. 매칭 성공 시 UI 전환
+  // 4. 매칭 성공 (1:1 방 입장)
   socket.on('match_success', (data) => {
     currentRoom = data.room_id;
     roomStatus.innerText = `🟢 상담 중: ${data.target_nickname} 님`;
     exitBtn.style.display = 'block';
     waitingArea.style.display = 'none';
-    clearLog();
-    appendMsg('시스템', '1:1 상담이 시작되었습니다.', 'system');
+    log.innerHTML = ''; // 채팅창 비우기
+    appendMsg('시스템', '1:1 상담이 시작되었습니다. 대화는 이 방에만 기록됩니다.', 'system');
   });
 
-  // 5. 메시지 수신 및 화면 표시
+  // 5. 메시지 수신
   socket.on('receive_message', (data) => {
-    const type = data.nickname === myNickname ? 'me' : 'other';
+    const type = (data.nickname === myNickname) ? 'me' : (data.nickname.includes('시스템') ? 'system' : 'other');
     appendMsg(data.nickname, data.message, type);
+
+    // 시스템 메시지 중 종료 신호가 오면 대기실로 복귀 처리
+    if (data.message.includes('대기실로 복귀') || data.message.includes('끊어졌습니다')) {
+      setTimeout(() => {
+        currentRoom = null;
+        roomStatus.innerText = "📢 대기실 (환자를 선택하세요)";
+        exitBtn.style.display = 'none';
+        waitingArea.style.display = 'block';
+      }, 2000);
+    }
   });
 
   function appendMsg(nick, text, type) {
     const div = document.createElement('div');
     div.className = `msg ${type}`;
-    div.innerHTML = type === 'system' ? text : `<strong>${nick}</strong><br>${text}`;
+    div.innerHTML = type === 'system' ? escapeHtml(text) : `<strong>${escapeHtml(nick)}</strong><br>${escapeHtml(text)}`;
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
   }
 
-  // 6. 전송 로직 (본인 메시지도 서버를 통해 받아서 처리됨)
+  // 6. 전송 로직
   document.getElementById('chat-form').onsubmit = (e) => {
     e.preventDefault();
     const input = document.getElementById('msg-input');
-    if (!input.value.trim()) return;
+    const msg = input.value.trim();
+    if (!msg || !socket.connected) return;
     
-    // 서버로 전송 (서버에서 room_id로 뿌려줘야 함)
-    socket.emit('send_message', { message: input.value, room_id: currentRoom });
+    socket.emit('send_message', { message: msg });
     input.value = '';
   };
 
-  // 7. 방 나가기 (대기실로 복귀)
-  function leaveRoom() {
+  // 7. 방 나가기
+  window.leaveRoom = function() {
     if (!confirm("상담을 종료하고 대기실로 나갈까요?")) return;
     socket.emit('leave_room', { room_id: currentRoom });
-    currentRoom = null;
-    roomStatus.innerText = "📢 대기실 (환자를 선택하세요)";
-    exitBtn.style.display = 'none';
-    waitingArea.style.display = 'block';
-    appendMsg('시스템', '상담이 종료되었습니다.', 'system');
   }
 
-// 8. 기록 지우기 (수정됨)
-function clearLog() {
+  // 8. 기록 지우기
+  window.clearLog = function() {
+    if (!confirm("이 방의 대화 기록을 DB에서 완전히 삭제하시겠습니까?")) return;
     if (currentRoom) {
-        // 서버 측에 해당 방(room_id)의 DB 기록 삭제를 요청합니다.
-        socket.emit('clear_chat', { room_id: currentRoom });
+      socket.emit('clear_chat', { room_id: currentRoom });
+    } else {
+      log.innerHTML = '<div class="msg system">대기실 화면이 정리되었습니다.</div>';
     }
-    log.innerHTML = '<div class="msg system">채팅 기록이 지워졌습니다.</div>';
   }
 
   // 부모 창에서 닉네임 변경 시 수신
