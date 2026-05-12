@@ -11,6 +11,9 @@ class ChatLog(Base):
     message = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+    # 👇 (None이면 전체 채팅, 문자열이 있으면 1:1 채팅)
+    room_id = Column(String(100), nullable=True, index=True)
+
 class Patient(Base):
     __tablename__ = "patients"
     id = Column(Integer, primary_key=True, index=True)

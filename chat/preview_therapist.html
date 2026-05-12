@@ -3,145 +3,156 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>치료사 채팅 (1:1 매칭)</title>
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <title>치료사 전용 상담창</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <style>
-    :root { --bg: #0f1419; --panel: #1a2332; --border: #2d3a4d; --text: #e7ecf3; --muted: #8b9cb3; --accent: #2eb88a; }
-    * { box-sizing: border-box; }
-    body { margin: 0; height: 100vh; font-family: "Segoe UI", sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; overflow: hidden; }
+    :root { --bg: #0f1419; --panel: #1a2332; --border: #2d3a4d; --text: #e7ecf3; --accent: #2eb88a; --danger: #ff6b6b; }
+    body { margin: 0; height: 100vh; font-family: sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; }
     
-    header { padding: 0.8rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-    header h1 { margin: 0; font-size: 1rem; color: var(--accent); }
-    .status { font-size: 0.75rem; padding: 0.3rem 0.5rem; border-radius: 3px; background: rgba(255, 107, 107, 0.2); color: #ff6b6b; }
-    .status.ok { background: rgba(46, 184, 138, 0.2); color: #6ee7b7; }
-    
-    /* 🩺 환자 대기 목록 UI */
-    #patient-list-container { background: #151d26; border-bottom: 1px solid var(--border); padding: 10px; flex-shrink: 0; }
-    #patient-list-container strong { color: #8ee8c8; font-size: 0.85rem; display: block; margin-bottom: 8px; }
-    #patient-list { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; max-height: 100px; overflow-y: auto; }
-    #patient-list li { display: flex; justify-content: space-between; align-items: center; background: rgba(46, 184, 138, 0.1); padding: 6px 10px; border-radius: 6px; margin-bottom: 4px; border: 1px solid rgba(46, 184, 138, 0.2); }
-    .match-btn { background: var(--accent); color: #0f1419; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 0.75rem; transition: 0.2s; }
-    .match-btn:hover { background: #3be0aa; }
-    
-    /* 💬 채팅 영역 UI */
-    .log { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; font-size: 0.88rem; }
-    .row { margin-bottom: 0.5rem; line-height: 1.4; }
-    .me { color: #8ee8c8; text-align: right; background: rgba(46, 184, 138, 0.1); padding: 4px 8px; border-radius: 4px; }
-    .meta { color: var(--muted); font-size: 0.75rem; text-align: center; margin: 10px 0; padding: 5px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-    
-    .composer { border-top: 1px solid var(--border); padding: 0.65rem; display: flex; gap: 0.5rem; background: var(--panel); flex-shrink: 0; }
-    .composer input { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); padding: 0.5rem; outline: none; }
-    .composer input:focus { border-color: var(--accent); }
-    .composer button { background: var(--accent); border: none; color: #0f1419; padding: 0.5rem 1rem; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    /* 헤더 및 상태바 */
+    header { padding: 10px 15px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .room-info { font-size: 0.9rem; font-weight: bold; color: var(--accent); }
+    .btn-exit { background: var(--danger); color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; display: none; }
+
+    /* 대기 환자 목록 섹션 */
+    #waiting-area { padding: 15px; background: rgba(46, 184, 138, 0.05); border-bottom: 1px solid var(--border); }
+    .patient-item { display: flex; justify-content: space-between; align-items: center; background: var(--panel); padding: 8px 12px; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border); }
+    .btn-match { background: var(--accent); border: none; color: #0f1419; padding: 4px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+    /* 채팅 로그 구역 */
+    .chat-log { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 8px; }
+    .msg { max-width: 80%; padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; line-height: 1.4; position: relative; }
+    .msg.me { align-self: flex-end; background: var(--accent); color: #0f1419; border-bottom-right-radius: 2px; }
+    .msg.other { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+    .msg.system { align-self: center; background: transparent; color: #8b9cb3; font-size: 0.75rem; border: none; }
+
+    /* 하단 컨트롤 */
+    .controls { padding: 10px; background: var(--panel); border-top: 1px solid var(--border); display: flex; gap: 8px; }
+    input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: white; padding: 10px; border-radius: 8px; outline: none; }
+    .btn-clear { background: #4b5563; color: white; border: none; padding: 0 10px; border-radius: 8px; cursor: pointer; font-size: 0.8rem; }
+    .btn-send { background: var(--accent); border: none; padding: 0 20px; border-radius: 8px; font-weight: bold; cursor: pointer; }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1>치료사 모드</h1>
-    <span class="status" id="st">연결 중…</span>
-  </header>
+<header>
+  <div class="room-info" id="room-status">📢 대기실 (환자를 선택하세요)</div>
+  <button class="btn-exit" id="exit-btn" onclick="leaveRoom()">상담 종료/나가기</button>
+</header>
 
-  <div id="patient-list-container">
-    <strong>🩺 대기 중인 환자 (클릭하여 1:1 매칭)</strong>
-    <ul id="patient-list">
-      <li style="background: transparent; border: none; color: var(--muted); padding: 0;">대기 중인 환자가 없습니다.</li>
-    </ul>
+<div id="waiting-area">
+  <div style="font-size: 0.8rem; margin-bottom: 10px; color: #8b9cb3;">현재 접속 중인 환자</div>
+  <div id="patient-list">
+    <div style="font-size: 0.85rem; color: #555;">접속한 환자가 없습니다.</div>
   </div>
+</div>
 
-  <div class="log" id="log"></div>
+<div class="chat-log" id="chat-log">
+  <div class="msg system">상담을 시작하려면 위 목록에서 환자를 선택하세요.</div>
+</div>
 
-  <form class="composer" id="form">
-    <input type="text" id="input" placeholder="메시지 입력..." autocomplete="off" />
-    <button type="submit" id="sendBtn">전송</button>
-  </form>
+<form class="controls" id="chat-form">
+  <button type="button" class="btn-clear" onclick="clearLog()">지우기</button>
+  <input type="text" id="msg-input" placeholder="메시지를 입력하세요..." autocomplete="off">
+  <button type="submit" class="btn-send">전송</button>
+</form>
 
-  <script>
-    const CHAT_ORIGIN = "https://ee-main.onrender.com"; // 서버 주소
-    const logEl = document.getElementById("log");
-    const st = document.getElementById("st");
-    const input = document.getElementById("input");
-    const form = document.getElementById("form");
+<script>
+  const socket = io();
+  const log = document.getElementById('chat-log');
+  const patientList = document.getElementById('patient-list');
+  const roomStatus = document.getElementById('room-status');
+  const exitBtn = document.getElementById('exit-btn');
+  const waitingArea = document.getElementById('waiting-area');
+  
+  let currentRoom = null;
+  let myNickname = "치료사_" + Math.floor(Math.random() * 1000);
 
-    // 닉네임 로드 (부모 창에서 변경 시 postMessage로 업데이트 받음)
-    let myNickname = localStorage.getItem("therapist_nickname") || "치료사_" + Math.floor(Math.random()*100);
+  // 1. 초기 접속 및 역할 등록
+  socket.on('connect', () => {
+    socket.emit('identify', { nickname: myNickname, role: 'therapist' });
+  });
 
-    const socket = io(CHAT_ORIGIN, { transports: ["websocket", "polling"] });
+  // 2. 대기 환자 목록 업데이트
+  socket.on('update_patient_list', (patients) => {
+    if (currentRoom) return; // 상담 중이면 목록 갱신 무시
+    patientList.innerHTML = patients.length === 0 ? '<div style="font-size: 0.85rem; color: #555;">접속한 환자가 없습니다.</div>' : '';
+    patients.forEach(p => {
+      const div = document.createElement('div');
+      div.className = 'patient-item';
+      div.innerHTML = `<span>👤 ${p.nickname}</span><button class="btn-match" onclick="startChat('${p.sid}', '${p.nickname}')">상담하기</button>`;
+      patientList.appendChild(div);
+    });
+  });
 
-    function appendLog(nickname, text, isMe = false, isMeta = false) {
-      const row = document.createElement("div");
-      if (isMeta) {
-        row.className = "row meta"; row.textContent = text;
-      } else {
-        row.className = "row" + (isMe ? " me" : "");
-        row.innerHTML = `<strong>${nickname}:</strong> ${text.replace(/[&<>"']/g, m => ({'&': '&amp;','<': '&lt;','>': '&gt;','"': '&quot;',"'": '&#039;'}[m]))}`;
-      }
-      logEl.appendChild(row);
-      logEl.scrollTop = logEl.scrollHeight;
+  // 3. 상담 시작 (1:1 매칭 요청)
+  function startChat(sid, nickname) {
+    socket.emit('request_match', { target_sid: sid });
+    appendMsg('시스템', `${nickname} 님에게 상담 요청을 보냈습니다.`, 'system');
+  }
+
+  // 4. 매칭 성공 시 UI 전환
+  socket.on('match_success', (data) => {
+    currentRoom = data.room_id;
+    roomStatus.innerText = `🟢 상담 중: ${data.target_nickname} 님`;
+    exitBtn.style.display = 'block';
+    waitingArea.style.display = 'none';
+    clearLog();
+    appendMsg('시스템', '1:1 상담이 시작되었습니다.', 'system');
+  });
+
+  // 5. 메시지 수신 및 화면 표시
+  socket.on('receive_message', (data) => {
+    const type = data.nickname === myNickname ? 'me' : 'other';
+    appendMsg(data.nickname, data.message, type);
+  });
+
+  function appendMsg(nick, text, type) {
+    const div = document.createElement('div');
+    div.className = `msg ${type}`;
+    div.innerHTML = type === 'system' ? text : `<strong>${nick}</strong><br>${text}`;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  // 6. 전송 로직 (본인 메시지도 서버를 통해 받아서 처리됨)
+  document.getElementById('chat-form').onsubmit = (e) => {
+    e.preventDefault();
+    const input = document.getElementById('msg-input');
+    if (!input.value.trim()) return;
+    
+    // 서버로 전송 (서버에서 room_id로 뿌려줘야 함)
+    socket.emit('send_message', { message: input.value, room_id: currentRoom });
+    input.value = '';
+  };
+
+  // 7. 방 나가기 (대기실로 복귀)
+  function leaveRoom() {
+    if (!confirm("상담을 종료하고 대기실로 나갈까요?")) return;
+    socket.emit('leave_room', { room_id: currentRoom });
+    currentRoom = null;
+    roomStatus.innerText = "📢 대기실 (환자를 선택하세요)";
+    exitBtn.style.display = 'none';
+    waitingArea.style.display = 'block';
+    appendMsg('시스템', '상담이 종료되었습니다.', 'system');
+  }
+
+// 8. 기록 지우기 (수정됨)
+function clearLog() {
+    if (currentRoom) {
+        // 서버 측에 해당 방(room_id)의 DB 기록 삭제를 요청합니다.
+        socket.emit('clear_chat', { room_id: currentRoom });
     }
+    log.innerHTML = '<div class="msg system">채팅 기록이 지워졌습니다.</div>';
+  }
 
-    // ✅ 서버 연결 (역할: therapist 부여)
-    socket.on("connect", () => {
-      st.textContent = `접속됨 (${myNickname})`; st.className = "status ok";
-      socket.emit("identify", { nickname: myNickname, role: "therapist" });
-      appendLog('📡 시스템', '서버에 연결되었습니다. 환자 목록을 기다립니다.', false, true);
-    });
-
-    // ✅ 대기 중인 환자 목록 수신 (핵심 기능!)
-    socket.on("update_patient_list", (patients) => {
-      const listEl = document.getElementById("patient-list");
-      listEl.innerHTML = "";
-      
-      if (patients.length === 0) {
-        listEl.innerHTML = '<li style="background: transparent; border: none; color: var(--muted); padding: 0;">대기 중인 환자가 없습니다.</li>';
-        return;
-      }
-      
-      patients.forEach(p => {
-        const li = document.createElement("li");
-        li.innerHTML = `
-          <span>👤 ${p.nickname}</span> 
-          <button class="match-btn" onclick="requestMatch('${p.sid}')">상담 시작</button>
-        `;
-        listEl.appendChild(li);
-      });
-    });
-
-    // ✅ 매칭 요청
-    window.requestMatch = function(patientSid) {
-      if (!socket.connected) return;
-      socket.emit("request_match", { target_sid: patientSid });
-    };
-
-    // ✅ 매칭 성공
-    socket.on("match_success", (data) => {
-      appendLog('🤝 시스템', data.message, false, true);
-      // 매칭 성공 시 환자 목록 숨기기 (선택 사항)
-      document.getElementById("patient-list-container").style.display = "none";
-    });
-
-    // ✅ 메시지 수신 및 발신
-    socket.on("receive_message", (data) => appendLog(data.nickname, data.message, data.nickname === myNickname, false));
-    socket.on("disconnect", () => { st.textContent = "연결 끊김"; st.className = "status err"; });
-
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const t = input.value.trim();
-      if (!t || !socket.connected) return;
-      socket.emit("send_message", { message: t });
-      input.value = "";
-    });
-
-    // 부모 창(index.html)에서 닉네임 변경 신호가 오면 반영
-    window.addEventListener("message", (event) => {
-      if(event.data && event.data.type === "UPDATE_NICKNAME") {
-        const newName = event.data.nickname;
-        myNickname = newName;
-        localStorage.setItem("therapist_nickname", newName);
-        socket.emit("set_nickname", newName);
-        st.textContent = `접속됨 (${newName})`;
-      }
-    });
-  </script>
+  // 부모 창에서 닉네임 변경 시 수신
+  window.addEventListener("message", (e) => {
+    if(e.data.type === "UPDATE_NICKNAME") {
+      myNickname = e.data.nickname;
+      socket.emit('set_nickname', myNickname);
+    }
+  });
+</script>
 </body>
 </html>
